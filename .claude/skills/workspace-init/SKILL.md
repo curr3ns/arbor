@@ -1,21 +1,19 @@
 ---
 name: workspace-init
-description: Initialize a new projects root: create the directory structure, populate repositories.json interactively, and clone each repo into the development folder.
+description: Initialize a new projects root directory structure, populate repositories.json interactively, and clone each repo into the development folder. Use once per machine before using workspace-start or workspace-add.
+metadata:
+  type: skill
 ---
-
-# workspace-init
 
 Bootstrap a new projects root on any machine. Creates the expected directory layout, builds `repositories.json` from user input, and clones each repo into `development/`.
 
-Run this once per machine before using `/workspace-start` or `/workspace-add`.
+Run this once per machine before using `workspace-start` or `workspace-add`.
 
 **Announce at start:** "Using workspace-init to set up a new projects root."
 
 ## Input
 
-`/workspace-init [path]`
-
-- `path` — optional absolute path for the projects root. If omitted, use the current working directory.
+Optional absolute path for the projects root. If omitted, use the current working directory.
 
 ## Projects root layout
 
@@ -23,7 +21,7 @@ After init, the projects root will contain:
 
 ```
 <projects-root>/
-  repositories.json       # repo registry consumed by all workspace skills
+  repositories.json       # repo registry consumed by all workspace commands
   development/            # long-lived clones, one per repo; used to push branches remotely
   configuration/          # optional IntelliJ configs (.idea/, .iml) per repo
 ```
@@ -44,7 +42,7 @@ A JSON array. Each entry describes one managed repository:
 ]
 ```
 
-- `name` — short identifier used as the `<repo>` argument in all workspace skills; must be unique
+- `name` — short identifier used as the `<repo>` argument in all workspace commands; must be unique
 - `repository` — git remote URL (SSH recommended)
 - `baseBranch` — the branch new feature branches are forked from (e.g. `development`, `main`, `develop`)
 
@@ -91,7 +89,6 @@ Validate each entry:
 
 Write the validated array to disk:
 ```bash
-# (write the collected JSON to this path)
 python3 -c "
 import json
 data = <collected_entries>
@@ -134,4 +131,4 @@ Print a final summary:
 - Projects root path
 - Number of repos written to `repositories.json`
 - Which repos were cloned successfully, which were skipped, which failed
-- Next step hint: "Run `/workspace-start` from any subdirectory of this projects root to create a feature workspace."
+- Next step hint: "Run `workspace-start` from any subdirectory of this projects root to create a feature workspace."

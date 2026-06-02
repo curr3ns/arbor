@@ -1,17 +1,15 @@
 ---
 name: workspace-start
-description: Set up a new feature workspace by creating a remote branch for each repo and cloning it into a named workspace directory with symlinked IntelliJ configs.
+description: Set up a new feature workspace by creating a remote branch for each repo and cloning it into a named workspace directory with symlinked IntelliJ configs. Use when starting new feature work that spans one or more repositories.
+metadata:
+  type: skill
 ---
-
-# workspace-start
 
 Set up a new feature workspace: create a remote branch for each repository, clone it into a named workspace directory, and symlink IntelliJ configurations.
 
 **Announce at start:** "Using workspace-start to set up a new workspace."
 
 ## Input
-
-`/workspace-start <branch_name> "<description>" <repo1> [repo2 ...]`
 
 - `branch_name` — must start with `feature/`, `bugfix/`, or `hotfix/` followed by a ticket or identifier (e.g. `feature/DEV-1234`). Reject with an error if the prefix is not one of those three — do not proceed.
 - `description` — quoted string describing the work; slugified and appended to the branch name and workspace directory name
@@ -30,9 +28,9 @@ The projects root contains:
 - `repositories.json` — repo registry (used to locate the root)
 - `development/<repo>/` — long-lived dev clone; used to push the new branch to the remote without a local checkout
 - `configuration/<repo>/` — stores IntelliJ `.idea/` and `.iml` files symlinked into workspace clones
-- `<workspace-name>/` — the workspace directory created by this skill
+- `<workspace-name>/` — the workspace directory created by this command
 
-A `.workspace.json` is written at the workspace root so `/workspace-add` can find the branch name later.
+A `.workspace.json` is written at the workspace root so `workspace-add` can find the branch name later.
 
 ## Steps
 
@@ -59,7 +57,7 @@ echo "Projects root: $PROJECTS_ROOT"
 
 ### 2. Parse and validate arguments
 
-Parse `$ARGUMENTS`:
+Parse the input:
 - First token → `BRANCH_PREFIX`
 - Quoted string → `DESCRIPTION` (strip quotes)
 - Remaining tokens → repo list

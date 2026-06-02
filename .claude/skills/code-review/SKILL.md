@@ -1,9 +1,9 @@
 ---
-name: codereview
-description: Use when the user wants a multi-perspective code review of the current branch diff or a GitHub PR. Accepts an optional PR URL; without one, reviews the diff between HEAD and the remote tracking branch.
+name: code-review
+description: Run a multi-perspective code review of the current branch diff or a GitHub PR. Use when completing tasks, reviewing a PR, or verifying work before merging. Accepts an optional PR URL; without one, reviews the diff between HEAD and the remote tracking branch.
+metadata:
+  type: skill
 ---
-
-# review
 
 Run a structured code review from 8 independent perspectives in parallel, then synthesize findings into a prioritized report.
 
@@ -11,7 +11,7 @@ Run a structured code review from 8 independent perspectives in parallel, then s
 
 ### 1. Get the diff and context
 
-**If a PR URL was provided** (e.g. `/review https://github.com/org/repo/pull/123`):
+**If a PR URL was provided:**
 
 ```bash
 gh pr view <url> --json title,body,baseRefName,headRefName
@@ -22,8 +22,8 @@ gh pr diff <url>
 
 ```bash
 git remote get-url origin
-git rev-parse --abbrev-ref HEAD          # current branch
-git merge-base HEAD origin/main          # or origin/<base>
+git rev-parse --abbrev-ref HEAD
+git merge-base HEAD origin/main
 git diff $(git merge-base HEAD origin/main)..HEAD
 git log --oneline $(git merge-base HEAD origin/main)..HEAD
 ```
@@ -39,7 +39,7 @@ Use the Agent tool to dispatch all 8 agents simultaneously. Each receives the fu
 **Agent prompt template** (customize per perspective):
 
 > You are a code reviewer focused exclusively on [PERSPECTIVE].
-> 
+>
 > **Context:**
 > - Commits: `<COMMIT_LOG>`
 > - PR/Branch intent: `<PR_TITLE or branch name>`

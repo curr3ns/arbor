@@ -1,9 +1,9 @@
 ---
-name: gencommit
-description: Use when the user wants to generate a git commit message from the current diff. Accepts an optional ticket number to prefix the message.
+name: code-gencommit
+description: Generate a concise git commit message from the current staged/unstaged diff and write it to a tmp file. Use when the user wants to generate a commit message. Accepts an optional ticket number to prefix the message.
+metadata:
+  type: skill
 ---
-
-# gencommit
 
 Generate a concise commit message from the current staged/unstaged diff, write it to a unique tmp file, and open it for review.
 
@@ -11,7 +11,7 @@ Generate a concise commit message from the current staged/unstaged diff, write i
 
 ### 1. Parse ticket number (optional)
 
-If the user provided an argument (e.g. `/gencommit ABC-123`), store it as `TICKET`. Otherwise `TICKET` is empty.
+If the user provided a ticket argument (e.g. `ABC-123`), store it as `TICKET`. Otherwise `TICKET` is empty.
 
 ### 2. Gather the diff
 
@@ -52,7 +52,7 @@ ABC-123 Added new connectors for the database
 Generate a unique filename using `mktemp`, write the message, and open it:
 
 ```bash
-COMMIT_FILE=$(mktemp /tmp/commit_msg.XXXXXX)
+COMMIT_FILE=$(mktemp /tmp/commit_msg.XXXXXX.txt)
 cat > "$COMMIT_FILE" << 'MSG'
 <generated message>
 MSG

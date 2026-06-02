@@ -1,20 +1,19 @@
 ---
 name: workspace-add
-description: Add one or more repositories to an existing workspace created by /workspace-start. Reads the branch name from .workspace.json in the current directory.
+description: Add one or more repositories to an existing workspace. Use when the user wants to add repos to a workspace that was created by workspace-start. Must be run from inside the workspace directory.
+metadata:
+  type: skill
 ---
 
-# workspace-add
-
-Add one or more repositories to an existing workspace created by `/workspace-start`.
+Add one or more repositories to an existing workspace created by `workspace-start`.
 
 **Announce at start:** "Using workspace-add to add repos to the current workspace."
 
 ## Input
 
-`/workspace-add <repo1> [repo2 ...]`
+One or more repo names matching entries in `repositories.json`.
 
-- `repos` — one or more repo names matching entries in `repositories.json`
-- Must be run from a workspace directory that contains `.workspace.json` (created by `/workspace-start`)
+Must be run from a workspace directory that contains `.workspace.json` (created by `workspace-start`).
 
 ## Repository registry
 
@@ -27,7 +26,7 @@ Add one or more repositories to an existing workspace created by `/workspace-sta
 
 ### 1. Read workspace metadata
 
-Verify `.workspace.json` exists in the current working directory. If not, stop and report that this command must be run from a workspace directory created by `/workspace-start`.
+Verify `.workspace.json` exists in the current working directory. If not, stop and report that this command must be run from a workspace directory created by `workspace-start`.
 
 ```bash
 WORKSPACE=$(pwd)
@@ -35,7 +34,7 @@ WORKSPACE_JSON="$WORKSPACE/.workspace.json"
 
 if [ ! -f "$WORKSPACE_JSON" ]; then
   echo "ERROR: .workspace.json not found in $WORKSPACE"
-  echo "Run this command from a workspace directory created by /workspace-start"
+  echo "Run this command from a workspace directory created by workspace-start"
   exit 1
 fi
 
@@ -58,7 +57,7 @@ fi
 
 ### 3. For each repo
 
-Repeat the following for every repo in the list parsed from `$ARGUMENTS`.
+Repeat the following for every repo in the list.
 
 **Check for conflicts** — if the repo directory already exists in the workspace, print an error and skip it.
 
