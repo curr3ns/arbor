@@ -1,5 +1,5 @@
 ---
-name: workspace-start
+name: workspace-create
 description: Set up a new feature workspace by creating a remote branch for each repo and cloning it into a named workspace directory with symlinked IntelliJ configs. Use when starting new feature work that spans one or more repositories.
 metadata:
   type: skill
@@ -7,7 +7,7 @@ metadata:
 
 Set up a new feature workspace: create a remote branch for each repository, clone it into a named workspace directory, and symlink IntelliJ configurations.
 
-**Announce at start:** "Using workspace-start to set up a new workspace."
+**Announce at start:** "Using workspace-create to set up a new workspace."
 
 ## Input
 
@@ -30,7 +30,7 @@ The projects root contains:
 - `configuration/<repo>/` — stores IntelliJ `.idea/` and `.iml` files symlinked into workspace clones
 - `<workspace-name>/` — the workspace directory created by this command
 
-A `.workspace.json` is written at the workspace root so `workspace-add` can find the branch name later.
+A `.workspace.json` is written at the workspace root so `workspace-add` and `workspace-import` can find the branch name later.
 
 ## Steps
 

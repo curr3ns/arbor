@@ -1,13 +1,13 @@
 ---
 name: workspace-init
-description: Initialize a new projects root directory structure, populate repositories.json interactively, and clone each repo into the development folder. Use once per machine before using workspace-start or workspace-add.
+description: Initialize a new projects root directory structure, populate repositories.json interactively, and clone each repo into the development folder. Use once per machine before using workspace-create or workspace-add.
 metadata:
   type: skill
 ---
 
 Bootstrap a new projects root on any machine. Creates the expected directory layout, builds `repositories.json` from user input, and clones each repo into `development/`.
 
-Run this once per machine before using `workspace-start` or `workspace-add`.
+Run this once per machine before using `workspace-create` or `workspace-add`.
 
 **Announce at start:** "Using workspace-init to set up a new projects root."
 
@@ -131,4 +131,4 @@ Print a final summary:
 - Projects root path
 - Number of repos written to `repositories.json`
 - Which repos were cloned successfully, which were skipped, which failed
-- Next step hint: "Run `workspace-start` from any subdirectory of this projects root to create a feature workspace."
+- Next step hint: "Run `workspace-create` from any subdirectory of this projects root to create a feature workspace."

@@ -28,7 +28,7 @@ If both return empty, report "Nothing to commit (openspec/kiro-only changes or c
 
 Format:
 ```
-{TICKET: }One concise summary sentence
+{TICKET: } One concise summary sentence
 - Bullet per logical change, as short as possible
 - Another bullet
 ```
@@ -52,7 +52,7 @@ ABC-123 Added new connectors for the database
 Generate a unique filename using `mktemp`, write the message, and open it:
 
 ```bash
-COMMIT_FILE=$(mktemp /tmp/commit_msg.XXXXXX.txt)
+COMMIT_FILE=$(mktemp /tmp/commit_msg.XXXXXX) && mv "$COMMIT_FILE" "${COMMIT_FILE}.txt" && COMMIT_FILE="${COMMIT_FILE}.txt"
 cat > "$COMMIT_FILE" << 'MSG'
 <generated message>
 MSG
