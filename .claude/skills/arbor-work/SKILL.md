@@ -54,8 +54,8 @@ You MUST create a todo per step and complete them in order.
    defines no such command, note that and continue.
 7. **Archive.** Interactive: ask for approval. Then invoke
    `openspec-archive-change` to move the change to `openspec/changes/archive/`.
-8. **Commit** with a subject `{ticket}: {short description}` (uppercase work ID,
-   e.g. `DEV-4: add cart`), optionally followed by a blank line and `-` bullets
+8. **Commit** with a subject `{ticket} {short description}` (uppercase work ID,
+   e.g. `DEV-4 add cart`), optionally followed by a blank line and `-` bullets
    for detail. Follow the repo's commit conventions if documented.
 9. **Push** the branch.
 10. **Integrate.** Autonomous: merge to `main`. Interactive: open a pull request.
