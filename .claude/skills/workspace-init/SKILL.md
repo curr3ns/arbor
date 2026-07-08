@@ -11,9 +11,9 @@ Run this once per machine before using `workspace-create` or `workspace-add`.
 
 **Announce at start:** "Using workspace-init to set up a new projects root."
 
-## Input
+## Gathering details
 
-Optional absolute path for the projects root. If omitted, use the current working directory.
+Do not expect the projects-root path as an argument. **Interrogate the user** with the **AskUserQuestion tool**: ask whether to use the current working directory as the projects root or a different absolute path (offer the current directory as an option, and let them supply another via "Other"). The repository list is gathered interactively in Step 3. Skip a prompt only if the user already gave that detail explicitly.
 
 ## Projects root layout
 
@@ -42,7 +42,7 @@ A JSON array. Each entry describes one managed repository:
 ]
 ```
 
-- `name` — short identifier used as the `<repo>` argument in all workspace commands; must be unique
+- `name` — short identifier used to select a repo in all workspace commands; must be unique
 - `repository` — git remote URL (SSH recommended)
 - `baseBranch` — the branch new feature branches are forked from (e.g. `development`, `main`, `develop`)
 
@@ -52,8 +52,10 @@ Multiple entries may point to the same `repository` URL with different `name` an
 
 ### 1. Resolve the projects root
 
+Ask the user for the projects root as described in **Gathering details** (default: the current working directory). Then:
+
 ```bash
-PROJECTS_ROOT="${1:-$(pwd)}"
+PROJECTS_ROOT="<answer, defaulting to $(pwd)>"
 echo "Projects root: $PROJECTS_ROOT"
 ```
 

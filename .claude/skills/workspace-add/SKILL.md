@@ -9,16 +9,16 @@ Add one or more repositories to an existing workspace created by `workspace-crea
 
 **Announce at start:** "Using workspace-add to add repos to the current workspace."
 
-## Input
+## Gathering details
 
-One or more repo names matching entries in `repositories.json`.
+Do not expect the repo names as arguments. **Interrogate the user** with the **AskUserQuestion tool**: after locating the projects root (Step 2), read the `name` values from `repositories.json`, exclude any repo that already exists in the workspace, and present the rest as a multi-select list. Only skip this if the user already named the repos explicitly.
 
 Must be run from a workspace directory that contains `.workspace.json` (created by `workspace-create`).
 
 ## Repository registry
 
 `repositories.json` lives in the projects root (located via `.workspace.json`). Each entry has:
-- `name` — the identifier used as the `<repo>` argument
+- `name` — the identifier used to select a repo
 - `repository` — the git remote URL
 - `baseBranch` — used if the branch doesn't yet exist on the remote
 
@@ -55,9 +55,22 @@ if [ ! -f "$PROJECTS_ROOT/repositories.json" ]; then
 fi
 ```
 
-### 3. For each repo
+### 3. Interrogate the user for repos
 
-Repeat the following for every repo in the list.
+List the candidate repo names, excluding those already present in the workspace:
+```bash
+python3 -c "
+import json, os
+names = [r['name'] for r in json.load(open('$PROJECTS_ROOT/repositories.json'))]
+print('\n'.join(n for n in names if not os.path.isdir(os.path.join('$WORKSPACE', n))))
+"
+```
+
+Use the **AskUserQuestion tool** to present these as a multi-select list and let the user choose which to add. Skip this only if the user already named the repos explicitly.
+
+### 4. For each repo
+
+Repeat the following for every repo the user selected.
 
 **Check for conflicts** — if the repo directory already exists in the workspace, print an error and skip it.
 
@@ -117,6 +130,6 @@ else
 fi
 ```
 
-### 4. Report
+### 5. Report
 
 Print a summary of cloned repos and the branch name. Flag any repos that failed, were skipped, or already existed.

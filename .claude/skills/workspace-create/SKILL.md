@@ -9,16 +9,22 @@ Set up a new feature workspace: create a remote branch for each repository, clon
 
 **Announce at start:** "Using workspace-create to set up a new workspace."
 
-## Input
+## Gathering details
 
-- `branch_name` — must start with `feature/`, `bugfix/`, or `hotfix/` followed by a ticket or identifier (e.g. `feature/DEV-1234`). Reject with an error if the prefix is not one of those three — do not proceed.
-- `description` — quoted string describing the work; slugified and appended to the branch name and workspace directory name
-- `repos` — one or more repo names matching entries in `repositories.json`
+Do not expect the branch name, description, or repo list as arguments. **Interrogate the user** for each detail you don't already have, using the **AskUserQuestion tool**. Only skip a question when the user has already supplied that detail explicitly in the conversation; use what they gave and ask for the rest.
+
+Collect:
+- **Branch type** — `feature`, `bugfix`, or `hotfix`. Present these as options.
+- **Ticket / identifier** — e.g. `DEV-1234`. Free-text (use the "Other" option or ask directly).
+- **Description** — a short phrase describing the work; slugified and appended to the branch name and workspace directory name.
+- **Repos** — which repositories to include. Read the `name` values from `repositories.json` (after locating the projects root in Step 1) and present them as a multi-select list.
+
+Ask for these before proceeding. The branch name is assembled from the branch type and ticket (e.g. `feature/DEV-1234`), so no prefix validation is needed — you only offer the three valid types.
 
 ## Repository registry
 
 `repositories.json` lives in the projects root (located in Step 1). It is a JSON array where each entry has:
-- `name` — the identifier used as the `<repo>` argument
+- `name` — the identifier used to select a repo
 - `repository` — the git remote URL
 - `baseBranch` — the branch to create the new feature branch from
 
@@ -55,17 +61,18 @@ fi
 echo "Projects root: $PROJECTS_ROOT"
 ```
 
-### 2. Parse and validate arguments
+### 2. Interrogate the user for details
 
-Parse the input:
-- First token → `BRANCH_PREFIX`
-- Quoted string → `DESCRIPTION` (strip quotes)
-- Remaining tokens → repo list
-
-Reject with a clear error if `BRANCH_PREFIX` does not start with `feature/`, `bugfix/`, or `hotfix/`.
-
-Compute derived names:
+Read the available repo names so you can offer them:
 ```bash
+python3 -c "import json; print('\n'.join(r['name'] for r in json.load(open('$PROJECTS_ROOT/repositories.json'))))"
+```
+
+Then use the **AskUserQuestion tool** to collect the details listed in **Gathering details** above — branch type, ticket/identifier, description, and which repos (multi-select from the names above). Ask only for what the user hasn't already provided.
+
+Assemble the branch name and derived paths from their answers:
+```bash
+BRANCH_PREFIX="${BRANCH_TYPE}/${TICKET}"   # e.g. feature/DEV-1234
 DESC_SLUG=$(echo "$DESCRIPTION" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
 BRANCH_NAME="${BRANCH_PREFIX}-${DESC_SLUG}"
 WORKSPACE_NAME=$(echo "$BRANCH_NAME" | tr '/' '-')

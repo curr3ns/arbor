@@ -9,17 +9,18 @@ Import an existing remote branch into a workspace. Creates a new workspace when 
 
 **Announce at start:** "Using workspace-import to import an existing branch."
 
-## Input
+## Gathering details
 
-- `repo` — repo name matching an entry in `repositories.json`
-- `branch` — existing remote branch name to import
+Do not expect the repo or branch as arguments. **Interrogate the user** with the **AskUserQuestion tool** (Step 3):
+- **Repo** — read the `name` values from `repositories.json` and present them so the user picks one.
+- **Branch** — the existing remote branch name to import (free-text; use the "Other" option or ask directly).
 
-Example: `/workspace-import project-x feature/DEV-1234-my-feature`
+Only skip a question when the user has already supplied that detail explicitly.
 
 ## Repository registry
 
 `repositories.json` lives in the projects root (located in Step 1). Each entry has:
-- `name` — the identifier used as the `<repo>` argument
+- `name` — the identifier used to select a repo
 - `repository` — the git remote URL
 - `baseBranch` — not used here (branch already exists)
 
@@ -78,9 +79,14 @@ if [ -z "$PROJECTS_ROOT" ]; then
 fi
 ```
 
-### 3. Parse and validate arguments
+### 3. Interrogate the user for repo and branch
 
-Extract `REPO` and `BRANCH` from the input. Both are required — report an error and stop if either is missing.
+List the available repo names to offer:
+```bash
+python3 -c "import json; print('\n'.join(r['name'] for r in json.load(open('$PROJECTS_ROOT/repositories.json'))))"
+```
+
+Use the **AskUserQuestion tool** to have the user pick the `REPO` from that list and provide the existing remote `BRANCH` to import (see **Gathering details**). Skip a prompt only if the user already gave that value. Both are required — do not proceed until you have each.
 
 ### 4. Look up the repo
 

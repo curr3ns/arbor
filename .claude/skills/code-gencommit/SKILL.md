@@ -28,7 +28,7 @@ If both return empty, report "Nothing to commit (openspec/kiro-only changes or c
 
 Format:
 ```
-{TICKET: } One concise summary sentence
+{TICKET } One concise summary sentence
 - Bullet per logical change, as short as possible
 - Another bullet
 ```
