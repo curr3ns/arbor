@@ -24,6 +24,13 @@ never merges. All implementation happens inside subagents via `arbor-work`.
 - `--max-slices N`: stop after N slices ship.
 - `--idle-minutes M`: how long to sleep before re-polling when the queue is
   empty (default 5).
+- `--merge`: dispatch subagents with plain `arbor-work` (gate → **merge** to the
+  default branch) instead of `arbor-work --pr`. No PRs are opened, so the **P0
+  (PR feedback)** and **P1 (failing CI)** queue sources are skipped and the queue
+  collapses to **P2** (roadmap + issues). Trades away the human review gate for
+  speed — use only on a repo where you fully trust the project gate. Default
+  (without this flag) is PR mode: every slice ends at *push + open PR*, and
+  humans merge.
 
 ## Data model — `.docs/roadmap/`
 
@@ -79,7 +86,8 @@ Repeat until a stop condition (see Stopping). You MUST create a todo per step.
 re-polling P0 PR feedback before any roadmap work.** Never continue rolling
 through `.docs/roadmap/` items across slices without first rebuilding the queue
 from PR comments and CI. A roadmap item is only selected when there is no
-outstanding P0/P1 work.
+outstanding P0/P1 work. In `--merge` mode no PRs exist, so P0/P1 are always empty
+and the queue is P2 only — skip the P0/P1 polling entirely.
 
 1. **Build the queue** from three sources, in strict priority order:
    - **P0 — PR feedback.** For each open PR authored by the loop's git user,
@@ -118,8 +126,10 @@ Dispatch a fresh subagent with a self-contained prompt containing: the selected
 item (or PR + the exact comments/CI to address), the base branch to start from,
 the priority reason, and the required return shape. Instruct it to:
 
-- **P2 (new work):** run the `arbor-work` skill with `--pr` for this slice —
-  autonomous, ending at *push + open PR*, never merging.
+- **P2 (new work):** run the `arbor-work` skill for this slice — autonomous. In
+  the default PR mode, pass `--pr` so it ends at *push + open PR*, never merging.
+  In `--merge` mode, run plain `arbor-work` (no `--pr`) so it runs the gate and
+  **merges** to the default branch; there is no `pr_url` to return.
 - **P0 / P1 (feedback / CI):** check out the PR branch, address every listed
   comment / fix the failing checks, run the project gate, push. Then **reply to
   and resolve** each addressed review thread so it is not reprocessed next cycle.
@@ -183,8 +193,9 @@ through resets and idle periods.
 - Only ever touch PRs/branches owned by the loop's git user.
 - Re-poll P0 PR feedback (and P1 CI) at the start of every cycle and every
   wakeup — never roll through roadmap items without re-checking PR comments.
-- The conductor never edits code and never merges — subagents do the work,
-  `arbor-work --pr` opens PRs, humans merge.
+- The conductor never edits code and never merges directly — subagents do the
+  work. In PR mode `arbor-work --pr` opens PRs and humans merge; in `--merge`
+  mode the subagent's `arbor-work` performs the merge.
 - Never start a slice whose `depends_on` is `blocked`.
 - Sequential only: exactly one subagent in flight at a time.
 - One change = one work ID = one branch = one PR (inherited from `arbor-work`).
