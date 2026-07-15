@@ -1,6 +1,6 @@
 ---
 name: arbor-work
-description: Run the mandatory agentic work cycle for a slice of work — assign a work ID, branch, author and apply an OpenSpec change, gate on the project's verification command, archive, commit, push, and integrate. Use when starting or completing any non-trivial change. Defaults to autonomous; pass --interaction to run with approval prompts.
+description: Run the mandatory agentic work cycle for a slice of work — assign a work ID, branch, author and apply an OpenSpec change, gate on the project's verification command, archive, commit, push, and integrate. Use when starting or completing any non-trivial change. Defaults to autonomous; pass --interaction to run with approval prompts, or --pr to run autonomously but open a pull request instead of merging.
 license: MIT
 metadata:
   author: arbor
@@ -14,14 +14,16 @@ work-ID + branch conventions on top of the OpenSpec propose/apply/archive
 skills. Two modes:
 
 - **autonomous** (default): proceed through every step without prompts; merge to
-  `main` at the end.
+  `main` at the end. Pass `--pr` to end by pushing and opening a pull request
+  instead of merging — still no prompts.
 - **interactive** (`--interaction`): ask for approval before applying and before
   archiving; open a pull request at the end instead of merging.
 
 ## Inputs
 
 A short description of the slice of work, and optionally the type (`DEV` for
-development — the default — or `INFRA` for infrastructure) and mode.
+development — the default — or `INFRA` for infrastructure) and mode
+(`--interaction` or `--pr`).
 
 ## Steps
 
@@ -58,7 +60,9 @@ You MUST create a todo per step and complete them in order.
    e.g. `DEV-4 add cart`), optionally followed by a blank line and `-` bullets
    for detail. Follow the repo's commit conventions if documented.
 9. **Push** the branch.
-10. **Integrate.** Autonomous: merge to `main`. Interactive: open a pull request.
+10. **Integrate.** Autonomous: merge to `main` — unless `--pr` was passed, in
+    which case push and open a pull request instead of merging. Interactive: open
+    a pull request.
 
 ## Guardrails
 
