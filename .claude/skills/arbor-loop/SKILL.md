@@ -75,6 +75,12 @@ You MUST create a todo for each setup item.
 
 Repeat until a stop condition (see Stopping). You MUST create a todo per step.
 
+**Every cycle — and every wakeup from idle or a token-limit sleep — starts by
+re-polling P0 PR feedback before any roadmap work.** Never continue rolling
+through `.docs/roadmap/` items across slices without first rebuilding the queue
+from PR comments and CI. A roadmap item is only selected when there is no
+outstanding P0/P1 work.
+
 1. **Build the queue** from three sources, in strict priority order:
    - **P0 — PR feedback.** For each open PR authored by the loop's git user,
      find unresolved review threads and `CHANGES_REQUESTED` reviews:
@@ -136,9 +142,9 @@ rate-limit error, then waits and resumes:
 - When a slice (or the conductor itself) hits a rate-limit / usage error, **stop
   starting new slices** and `ScheduleWakeup` on a coarse cadence — try the error
   message's reset time if one is present, otherwise back off roughly hourly.
-- On each wake, attempt one lightweight cycle. If it still fails with a limit
-  error, sleep again; once the window has reset the cycle succeeds and normal
-  looping resumes.
+- On each wake, attempt one lightweight cycle — which, like every cycle, begins
+  by re-polling P0 PR feedback. If it still fails with a limit error, sleep
+  again; once the window has reset the cycle succeeds and normal looping resumes.
 - **No committed work is lost.** `arbor-work` commits and pushes before the
   subagent returns, so a hard block mid-slice at worst discards one uncommitted
   slice, which is retried after the reset.
@@ -162,9 +168,9 @@ Never make more than 2 attempts in a row on the same item.
 ## Idle — sleep and re-poll
 
 When the queue is empty (no PR feedback, no failing CI, no ready items or open
-issues), sleep for `--idle-minutes` via `ScheduleWakeup`, then re-poll. New PR
-comments, CI results, and issues get picked up on the next cycle. Continuous by
-default.
+issues), sleep for `--idle-minutes` via `ScheduleWakeup`, then re-poll —
+starting with P0 PR feedback. New PR comments, CI results, and issues get picked
+up on the next cycle. Continuous by default.
 
 ## Stopping
 
@@ -175,6 +181,8 @@ through resets and idle periods.
 ## Guardrails
 
 - Only ever touch PRs/branches owned by the loop's git user.
+- Re-poll P0 PR feedback (and P1 CI) at the start of every cycle and every
+  wakeup — never roll through roadmap items without re-checking PR comments.
 - The conductor never edits code and never merges — subagents do the work,
   `arbor-work --pr` opens PRs, humans merge.
 - Never start a slice whose `depends_on` is `blocked`.
