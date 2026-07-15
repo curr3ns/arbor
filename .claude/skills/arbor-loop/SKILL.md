@@ -1,6 +1,6 @@
 ---
 name: arbor-loop
-description: Run a repo autonomously and continuously — a persistent conductor that repeatedly grabs the highest-priority slice of work (PR review comments, failing CI, then roadmap items and issues), dispatches a fresh subagent to implement it via arbor-work and open a pull request, and loops. Prioritizes fixing PR feedback, sleeps through token-limit resets, and re-polls when idle. Use to maximize unattended progress on a repo.
+description: Run a repo autonomously and continuously — a persistent conductor that repeatedly grabs the highest-priority slice of work (PR review comments, failing CI, then roadmap items and issues), dispatches a fresh subagent to implement it via arbor-work and open a pull request, and loops. Prioritizes fixing PR feedback, sleeps through token-limit resets, and re-polls when idle. Pass --merge to skip PRs and have subagents merge directly to the default branch. Use to maximize unattended progress on a repo.
 license: MIT
 metadata:
   author: arbor
