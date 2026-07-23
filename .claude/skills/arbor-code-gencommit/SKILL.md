@@ -29,12 +29,14 @@ If both return empty, report "Nothing to commit (openspec/kiro-only changes or c
 Format:
 ```
 {TICKET } One concise summary sentence
+
 - Bullet per logical change, as short as possible
 - Another bullet
 ```
 
 Rules:
 - Summary line: past tense, ≤72 characters, no period; prefix with `TICKET ` (no colon) if set
+- **Blank line between the summary and the bullets, always.** Without it, `git commit -F` treats the message as one unbroken paragraph and folds every bullet into the subject line instead of the commit body.
 - Each bullet: past tense, one short phrase, no filler words, no periods
 - Omit openspec, .kiro, and test-related changes from bullets **unless the diff contains only test changes** — in that case include them
 - No prose body, no "this commit", no redundant bullets
@@ -42,6 +44,7 @@ Rules:
 Example:
 ```
 ABC-123 Added new connectors for the database
+
 - Configured the database to scaffold automatically
 - Defined connectors
 - Added health monitors

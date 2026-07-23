@@ -49,6 +49,7 @@ still something real to commit even though it's excluded from the bullets.
 Format:
 ```
 {TICKET } One concise summary sentence
+
 - Bullet per logical change, as short as possible
 - Another bullet
 ```
@@ -56,6 +57,10 @@ Format:
 Rules (same convention as arbor-code-gencommit):
 - Summary line: past tense, ≤72 characters, no period; prefix with `TICKET `
   (no colon) if set
+- **Blank line between the summary and the bullets, always.** Without it,
+  `git commit -F` treats the whole message as one unbroken paragraph and
+  folds every bullet into the subject line — the bullets must be the commit
+  body, not part of the subject.
 - Each bullet: past tense, one short phrase, no filler words, no periods
 - Omit openspec, .kiro, and test-related changes from bullets **unless the
   diff contains only test changes** — in that case include them
@@ -64,6 +69,7 @@ Rules (same convention as arbor-code-gencommit):
 Example:
 ```
 ABC-123 Added new connectors for the database
+
 - Configured the database to scaffold automatically
 - Defined connectors
 - Added health monitors
