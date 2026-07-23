@@ -1,19 +1,22 @@
 ---
 name: arbor-auto-roadmap
-description: Interrogates the user to build a multi-phase product roadmap, then writes it either as versioned files under docs/roadmap/ or as GitHub Milestones (one per phase, plus a pinned tracking issue) — the user's choice. Use when planning or re-planning product direction beyond a single slice of work: phases, themes, sequencing, non-goals. Defines the "Roadmap:" reference-line format that arbor-auto-refine reads to turn the earliest incomplete phase's items into backlog issues, and that arbor-auto-developer reads to mark an item off (and archive the phase/close the milestone) once that issue's work merges. User-invoked, not scheduled — run whenever there's planning to do, not on a timer.
+description: Interrogates the user to build a multi-phase product roadmap, then writes it either as versioned files under docs/roadmap/ or as GitHub Milestones (one per phase, plus a pinned tracking issue) — the user's choice. Use when planning or re-planning product direction beyond a single slice of work: phases, themes, sequencing, non-goals. Defines the "Roadmap:" reference-line format that arbor-auto-refine reads to turn the earliest incomplete phase's items into backlog issues, and that arbor-auto-developer reads to mark an item off (and archive the phase/close the milestone) once that issue's work merges. Normally user-invoked when there's planning to do, not on a timer — but arbor-auto-refine also invokes it mid-cycle as a precondition fix-up when no roadmap exists yet, in which case it interrogates whoever is present to answer.
 license: MIT
 metadata:
   author: arbor
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Arbor auto-roadmap
 
 Companion to `arbor-auto-refine` (agent 1) and `arbor-auto-developer` (agent 2)
 in the continuous dev loop, but not itself part of that loop's cadence — this
-skill is invoked directly by a human when there's planning to do, produces one
-roadmap, and stops. The other two skills poll what it produces; it never polls
-anything itself.
+skill runs either because a human invoked it directly when there's planning to
+do, or because `arbor-auto-refine` invoked it mid-cycle as a precondition
+fix-up (its own cycle requires a roadmap to exist and finds none). Either way
+it interrogates whoever is present via `AskUserQuestion`, produces one
+roadmap, and stops. The other two skills poll what it produces; it never
+polls anything itself.
 
 **Generate nothing until the recap in step 6 is approved** — same rule as
 `arbor-project-scaffold`.

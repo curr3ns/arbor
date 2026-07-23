@@ -1,10 +1,10 @@
 ---
 name: arbor-auto-developer
-description: Poll for feedback on the integration branch's pull request (unresolved review comments, failing CI) first, then the issue backlog, implementing the highest-priority item one at a time via arbor-auto-work --autonomous overridden to integrate against a dedicated integration branch instead of the default branch. Keeps a single running PR from the integration branch to the default branch up to date for human review. When a merged issue carries arbor-auto-roadmap's "Roadmap:" reference line, marks that roadmap item off (archiving the file or closing the Milestone if it was the last one). Self-seeds the backlog with one arbor-auto-refine pass when the queue is empty and there's no PR feedback to address. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop.
+description: Poll for feedback on the integration branch's pull request (unresolved review comments, failing CI) first, then the issue backlog, implementing the highest-priority item one at a time via arbor-auto-work --autonomous overridden to integrate against a dedicated integration branch instead of the default branch. Keeps a single running PR from the integration branch to the default branch up to date for human review. When a merged issue carries arbor-auto-roadmap's "Roadmap:" reference line, marks that roadmap item off (archiving the file or closing the Milestone if it was the last one). Self-seeds the backlog with one arbor-auto-refine pass when the queue is empty and there's no PR feedback to address — that pass may itself invoke arbor-auto-roadmap if no roadmap exists yet, since arbor-auto-refine now requires one. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop.
 license: MIT
 metadata:
   author: arbor
-  version: "1.2"
+  version: "1.3"
 ---
 
 # Arbor auto-developer agent
@@ -67,7 +67,12 @@ You MUST create a todo per step and complete them in order.
       (`gh issue list --state open --json number,title,body,labels`).
    2. **Self-seed if empty.** If the queue is empty, run the `arbor-auto-refine`
       skill for exactly one pass (in-process — no subagent dispatch needed),
-      then re-list open issues. Never invoke `arbor-auto-refine` a second time in
+      then re-list open issues. That one pass may itself invoke
+      `arbor-auto-roadmap` if no roadmap exists yet — `arbor-auto-refine`
+      now requires one as a precondition for its own cycle — which can mean
+      interrogating whoever is present before any issues get filed; this is
+      still part of the same single pass, not a second invocation this skill
+      needs to manage. Never invoke `arbor-auto-refine` a second time in
       the same run, regardless of what the one pass finds. If the queue is
       *still* empty after that one pass, **end the run now** — no dispatch,
       no notification, nothing else to do until the next scheduled tick.
