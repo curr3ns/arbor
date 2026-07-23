@@ -1,5 +1,5 @@
 ---
-name: arbor-scaffold
+name: arbor-project-scaffold
 description: Use when starting a brand-new project — an empty or nearly-empty directory that needs to become a working repo. Interrogates the user, then scaffolds structure, testing, Docker profiles, OpenSpec, quality rules, the gate, and git. Stack-agnostic.
 license: MIT
 metadata:
@@ -10,7 +10,7 @@ metadata:
 # Arbor scaffold
 
 Turn an empty directory into a project with the arbor house practices baked in:
-`packages/` subdivision, OpenSpec + the `/arbor-work` cycle, a real verification
+`packages/` subdivision, OpenSpec + the `/arbor-auto-work` cycle, a real verification
 gate, two Docker profiles on a claimed port block, and quality rules for both
 agents and humans. Stack-agnostic: interrogate first, derive specifics per
 stack.
@@ -82,7 +82,7 @@ You MUST create a todo per step and complete them in order.
    two-profile port rule; `rules` for proposal/specs/tasks (SHALL/MUST +
    WHEN/THEN scenarios, grouped small verifiable tasks).
 10. **Quality rules.** `CLAUDE.md` golden rules: agents use the e2e profile
-    only (name the ports); all non-trivial work goes through `/arbor-work`;
+    only (name the ports); all non-trivial work goes through `/arbor-auto-work`;
     the gate is real — name the command; honor the conventions. Plus a
     commands table. `docs/CONVENTIONS.md`: narrow drill-down directories,
     concise self-documenting files, reuse over duplication, extension over
@@ -91,7 +91,7 @@ You MUST create a todo per step and complete them in order.
 11. **Gate.** A single command (`gate` script or stack equivalent) chaining
     lint, typecheck (or stack analog), the migration name-check when one
     exists, coverage-gated tests, build, and e2e-in-Docker (bring the e2e
-    stack up, run, tear down). This is the command `/arbor-work` step 6 will
+    stack up, run, tear down). This is the command `/arbor-auto-work` step 6 will
     run.
 12. **Git.** `git init` (skip if already a repo); `.gitignore` covering IDE
     files (`.idea/`, `*.iml`, `.vscode/`), OS noise (`.DS_Store`), local env

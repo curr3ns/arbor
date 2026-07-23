@@ -1,19 +1,19 @@
 ---
-name: workspace-add
-description: Add one or more repositories to an existing workspace. Use when the user wants to add repos to a workspace that was created by workspace-create. Must be run from inside the workspace directory.
+name: arbor-workspace-add
+description: Add one or more repositories to an existing workspace. Use when the user wants to add repos to a workspace that was created by arbor-workspace-create. Must be run from inside the workspace directory.
 metadata:
   type: skill
 ---
 
-Add one or more repositories to an existing workspace created by `workspace-create`.
+Add one or more repositories to an existing workspace created by `arbor-workspace-create`.
 
-**Announce at start:** "Using workspace-add to add repos to the current workspace."
+**Announce at start:** "Using arbor-workspace-add to add repos to the current workspace."
 
 ## Gathering details
 
 Do not expect the repo names as arguments. **Interrogate the user** with the **AskUserQuestion tool**: after locating the projects root (Step 2), read the `name` values from `repositories.json`, exclude any repo that already exists in the workspace, and present the rest as a multi-select list. Only skip this if the user already named the repos explicitly.
 
-Must be run from a workspace directory that contains `.workspace.json` (created by `workspace-create`).
+Must be run from a workspace directory that contains `.workspace.json` (created by `arbor-workspace-create`).
 
 ## Repository registry
 
@@ -26,7 +26,7 @@ Must be run from a workspace directory that contains `.workspace.json` (created 
 
 ### 1. Read workspace metadata
 
-Verify `.workspace.json` exists in the current working directory. If not, stop and report that this command must be run from a workspace directory created by `workspace-create`.
+Verify `.workspace.json` exists in the current working directory. If not, stop and report that this command must be run from a workspace directory created by `arbor-workspace-create`.
 
 ```bash
 WORKSPACE=$(pwd)
@@ -34,7 +34,7 @@ WORKSPACE_JSON="$WORKSPACE/.workspace.json"
 
 if [ ! -f "$WORKSPACE_JSON" ]; then
   echo "ERROR: .workspace.json not found in $WORKSPACE"
-  echo "Run this command from a workspace directory created by workspace-create"
+  echo "Run this command from a workspace directory created by arbor-workspace-create"
   exit 1
 fi
 

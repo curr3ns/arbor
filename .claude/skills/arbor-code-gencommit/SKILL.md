@@ -1,5 +1,5 @@
 ---
-name: code-gencommit
+name: arbor-code-gencommit
 description: Generate a concise git commit message from the current staged/unstaged diff and write it to a tmp file. Use when the user wants to generate a commit message. Accepts an optional ticket number to prefix the message.
 metadata:
   type: skill

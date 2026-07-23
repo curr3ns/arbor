@@ -1,5 +1,5 @@
 ---
-name: openspec-modify
+name: arbor-opsx-modify
 description: Use when the user wants to implement a specific change and have it properly documented in the OpenSpec lifecycle in one step. Implements first, then retroactively creates or updates proposal, design, tasks, and specs so the change can be archived. Use when the user wants to move fast without a separate planning phase.
 metadata:
   type: skill
@@ -7,7 +7,7 @@ metadata:
 
 Implement a change and retroactively create or update its OpenSpec documentation in one step. The output is a fully documented change — proposal, design, completed tasks, and specs — ready to archive.
 
-**Announce at start:** "Using openspec-modify to implement and document the change."
+**Announce at start:** "Using arbor-opsx-modify to implement and document the change."
 
 ---
 

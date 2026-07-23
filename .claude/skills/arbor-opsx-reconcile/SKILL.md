@@ -1,5 +1,5 @@
 ---
-name: openspec-reconcile
+name: arbor-opsx-reconcile
 description: Use when code changes exist on a branch that were made outside the openspec lifecycle - without a proposal, design, or tasks. Reconciles the diff so every change maps to an openspec change that can be archived correctly.
 license: MIT
 compatibility: Requires openspec CLI.

@@ -1,5 +1,5 @@
 ---
-name: workspace-import
+name: arbor-workspace-import
 description: Import an existing remote branch into a workspace. If run from outside a workspace, creates a new workspace for the branch. If run from inside a workspace, adds the repo at the specified branch to the current workspace. Use when the branch already exists and you want to clone it locally.
 metadata:
   type: skill
@@ -7,7 +7,7 @@ metadata:
 
 Import an existing remote branch into a workspace. Creates a new workspace when run from outside one; adds a repo to the current workspace when run from inside one.
 
-**Announce at start:** "Using workspace-import to import an existing branch."
+**Announce at start:** "Using arbor-workspace-import to import an existing branch."
 
 ## Gathering details
 
