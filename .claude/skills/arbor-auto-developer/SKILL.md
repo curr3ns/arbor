@@ -1,10 +1,10 @@
 ---
 name: arbor-auto-developer
-description: Poll for feedback on the integration branch's pull request (unresolved review comments, failing CI) first, then the issue backlog, implementing the highest-priority item one at a time via arbor-auto-work --autonomous overridden to integrate against a dedicated integration branch instead of the default branch. Keeps a single running PR from the integration branch to the default branch up to date for human review. Self-seeds the backlog with one arbor-auto-refine pass when the queue is empty and there's no PR feedback to address. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop.
+description: Poll for feedback on the integration branch's pull request (unresolved review comments, failing CI) first, then the issue backlog, implementing the highest-priority item one at a time via arbor-auto-work --autonomous overridden to integrate against a dedicated integration branch instead of the default branch. Keeps a single running PR from the integration branch to the default branch up to date for human review. When a merged issue carries arbor-auto-roadmap's "Roadmap:" reference line, marks that roadmap item off (archiving the file or closing the Milestone if it was the last one). Self-seeds the backlog with one arbor-auto-refine pass when the queue is empty and there's no PR feedback to address. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop.
 license: MIT
 metadata:
   author: arbor
-  version: "1.1"
+  version: "1.2"
 ---
 
 # Arbor auto-developer agent
@@ -86,7 +86,21 @@ You MUST create a todo per step and complete them in order.
       branch to the default branch exists yet, open one now (title
       summarizing the batch, body listing accumulated work); if one already
       exists, its diff updates automatically from the push — nothing further
-      to do. Send the merge-landed notification.
+      to do.
+
+      **Roadmap mark-off.** Check the issue's body
+      (`gh issue view <n> --json body`) for the `Roadmap:` reference line
+      `arbor-auto-roadmap` defines — don't wait for the eventual
+      default-branch close to do this. If present: flip that item's checkbox
+      in the referenced `docs/roadmap/*.md` file, `git mv`-ing it to
+      `docs/roadmap/archive/` in the same commit if every item in the file is
+      now checked; or, for a Milestone reference, PATCH the Milestone's
+      description to flip the checkbox (`gh api
+      repos/{owner}/{repo}/milestones/<n>`), closing the Milestone
+      (`-f state=closed`) if every item in it is now checked. Commit and push
+      this mark-off directly to the integration branch — it's bookkeeping,
+      not a new `arbor-auto-work` cycle. No `Roadmap:` line means an ordinary
+      issue; skip this step. Send the merge-landed notification.
    7. **On gate failure:** dispatch exactly one retry subagent in a fresh
       context, passing the failure output. If the retry also fails, leave
       the issue open, post a comment on it explaining the failure (what
@@ -119,6 +133,9 @@ actionable) when:
 - A dispatched subagent's merge lands on the integration branch.
 - PR feedback (review comments or failing CI) was addressed and pushed.
 - An issue is left blocked after a second failed attempt.
+- A roadmap mark-off archives its file (all phases complete) or closes its
+  Milestone (fold this into the merge-landed notification above rather than
+  sending a second one for the same event).
 
 Do **not** notify when dispatching (only on the outcome), and do not notify
 for a routine successful run beyond the pings above. If `PushNotification`
@@ -138,6 +155,9 @@ missing notification.
   only a human merges that PR.
 - At most one open PR from the integration branch to the default branch at a
   time — reuse it, never open a second.
+- Never author or restructure roadmap content — only flip an existing
+  checkbox or close an existing Milestone that `arbor-auto-roadmap` already
+  created; that skill owns creation, this one only owns mark-off.
 - P0/P1 (PR feedback) always takes priority over the issue queue in a given
   cycle — never pick up a new issue while there's unaddressed feedback on the
   running PR.
