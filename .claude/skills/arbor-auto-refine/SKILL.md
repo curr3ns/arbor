@@ -1,10 +1,10 @@
 ---
 name: arbor-auto-refine
-description: Audit this repo's state and the running app to keep the issue backlog topped up with well-scoped, deduped work items — static doc/vision review, roadmap audit (docs/roadmap/ or GitHub Milestones written by arbor-auto-roadmap), dynamic app exploration for bugs, and triage of issues arbor-auto-developer left blocked. Requires an existing roadmap as a precondition for the whole cycle — invokes arbor-auto-roadmap first if none exists. Run on a schedule (~every 8h); each run is a single pass, not a loop.
+description: Audit this repo's state and the running app to keep the issue backlog topped up with well-scoped, deduped work items — static doc/vision review, roadmap audit (docs/roadmap/ or GitHub Milestones written by arbor-auto-roadmap), dynamic app exploration for bugs, and triage of issues arbor-auto-developer left blocked. When the roadmap audit files an item's backlog issue, immediately flips that item's checkbox and closes the phase/roadmap out (archiving the file, or closing the Milestone and pinned tracking issue) — never waits for the issue to merge, and never invokes arbor-auto-roadmap itself; a roadmap is optional input, not a precondition. Run on a schedule (~every 8h); each run is a single pass, not a loop.
 license: MIT
 metadata:
   author: arbor
-  version: "1.2"
+  version: "1.3"
 ---
 
 # Arbor auto-refine agent
@@ -24,10 +24,16 @@ skill does not loop internally.
    repo's own established types), `priority:1`, `priority:2`, `priority:3`
    exist (`gh label list`); if any are missing, that's a setup problem to fix
    before relying on the loop, not something to paper over per-run.
-3. A roadmap (`docs/roadmap/*.md` or an open Milestone) is a precondition for
-   this skill's cycle — see step 2. Roadmap content itself is always authored
-   by `arbor-auto-roadmap`, whether a human ran it ahead of time or this skill
-   invokes it mid-run; this skill never authors roadmap content itself.
+3. A roadmap (`docs/roadmap/*.md` or an open Milestone) is optional input, not
+   a precondition — when none exists, the roadmap audit source (step 4)
+   simply has nothing to contribute; every other source still runs. Roadmap
+   content itself is always authored by `arbor-auto-roadmap`, and this skill
+   never invokes it — planning the next roadmap is a human's call, made on
+   their own schedule.
+4. Confirm the integration branch `arbor-auto-developer`'s Setup already
+   picked (`gh api repos/{owner}/{repo}/branches/<branch>`) — needed to commit
+   docs-format roadmap bookkeeping (checkbox flips, archiving) directly to it
+   in step 9. GitHub-format bookkeeping needs no branch at all.
 
 ## The cycle
 
@@ -38,15 +44,12 @@ You MUST create a todo per step and complete them in order.
    dedup in every source below, and to count the current `agent:backlog`
    queue depth.
 
-2. **Roadmap precondition.** Check whether a roadmap exists: any non-archived
-   `docs/roadmap/*.md` file, or any open Milestone. If none exists, invoke the
-   `arbor-auto-roadmap` skill now — it interrogates whoever is present via
-   `AskUserQuestion` and, once its recap is approved, writes the roadmap. If
-   that interrogation doesn't end in an approved roadmap (abandoned,
-   declined, or otherwise left incomplete), stop the run here: send the
-   no-roadmap notification (see Notifications) and exit — every step below
-   requires a roadmap and has nothing to do without one. Once a roadmap
-   exists (already there, or just created), continue to step 3 with it.
+2. **Roadmap check.** Check whether a roadmap exists: any non-archived
+   `docs/roadmap/*.md` file, or any open Milestone. This is informational
+   only — it decides whether step 4 has any candidates to contribute this
+   run, not whether the run continues. If none exists, skip step 4 entirely
+   and continue to step 3; never invoke `arbor-auto-roadmap` — planning the
+   next roadmap is a human's call, on their own schedule.
 
 3. **Static audit.** Read `CLAUDE.md`, `docs/CONVENTIONS.md`, `README.md`
    (product vision), the package boundaries, and `openspec/changes/archive/`
@@ -55,13 +58,16 @@ You MUST create a todo per step and complete them in order.
    project's own stated vision implies but nothing tracks yet. No size
    ceiling — architecturally significant ideas are valid candidates too.
 
-4. **Roadmap audit.** Read the roadmap(s) confirmed or created in step 2 per
-   the format `arbor-auto-roadmap` defines. For each roadmap found, find the
-   earliest phase that still has any unchecked item — later phases in that
-   same roadmap are not eligible this run, even if the queue has headroom.
-   Unchecked items in that phase are candidates; when filed (step 8), each
-   carries the `Roadmap:` reference line `arbor-auto-roadmap` defines, and
-   (GitHub-format roadmaps only) gets assigned to that phase's Milestone.
+4. **Roadmap audit.** Skip this source entirely if step 2 found no roadmap.
+   Otherwise, read the roadmap(s) found, per the format `arbor-auto-roadmap`
+   defines. For each roadmap, find the earliest phase that still has any
+   unchecked item — later phases in that same roadmap are not eligible this
+   run, even if the queue has headroom. Unchecked items in that phase are
+   candidates; when filed (step 8), each carries the `Roadmap:` reference line
+   `arbor-auto-roadmap` defines, and (GitHub-format roadmaps only) gets
+   assigned to that phase's Milestone. Filing is also where the item's
+   checkbox gets flipped and, if warranted, the phase/roadmap closed out —
+   see step 9.
 
 5. **Dynamic exploration.** Bring up the project's e2e/agent stack (its
    `stack:e2e:up` script or equivalent — never the default profile). If the
@@ -109,14 +115,35 @@ You MUST create a todo per step and complete them in order.
      reference line `arbor-auto-roadmap` defines, and, for a GitHub-format
      roadmap, is assigned to that phase's Milestone.
 
+9. **Close out refined roadmap items.** For every issue just filed in step 8
+   that carries a `Roadmap:` reference line, flip that item's checkbox right
+   away — don't wait for the issue to merge:
+   - **Docs format:** edit the referenced `docs/roadmap/<file>.md`, checking
+     `- [x] R<n>` for each newly-filed item. If every item in the file is now
+     checked, `git mv` it to `docs/roadmap/archive/` in the same commit.
+     Commit and push this directly to the integration branch confirmed in
+     Setup — bookkeeping, not a new `arbor-auto-work` cycle. Batch every
+     newly-filed item from this run into one commit.
+   - **GitHub format:** PATCH the referenced Milestone's description (`gh api
+     repos/{owner}/{repo}/milestones/<n>`) to check each newly-filed item's
+     box. If every item in that Milestone is now checked, close it
+     (`-f state=closed`). If that was the last open Milestone linked from the
+     roadmap's pinned tracking issue, close the tracking issue too
+     (`gh issue close`), leaving a closing comment that summarizes the
+     phases.
+   - If this closes out a whole roadmap (file archived, or tracking issue
+     closed), send the roadmap-complete notification (see Notifications).
+
 ## Notifications
 
 Send a `PushNotification` (one line, under 200 chars, leading with what's
 actionable) when:
 - The `agent:backlog` cap (5) is hit and no new issues were filed.
 - The e2e stack has now failed to come up on two consecutive runs.
-- No roadmap existed and the `arbor-auto-roadmap` interrogation (step 2)
-  didn't end in one being written, so this run filed nothing.
+- Step 9 closes out a whole roadmap (file archived, or Milestone + tracking
+  issue closed) — this is the signal that it's time for a human to plan the
+  next one; there is no separate "no roadmap" notification since this skill
+  never nags about a roadmap's absence.
 
 Do **not** notify on a routine run that completes normally — that's noise,
 not signal. If `PushNotification` isn't available in this run's environment,
@@ -125,10 +152,9 @@ run over a missing notification.
 
 ## Guardrails
 
-- Never run the static audit, roadmap audit, dynamic exploration, or
-  blocked-issue triage sources without a roadmap in place first — a roadmap
-  is a precondition for the whole cycle (step 2), not just for the roadmap
-  audit specifically.
+- The roadmap audit source (step 4) only runs when a roadmap exists; its
+  absence never blocks the static audit, dynamic exploration, or
+  blocked-issue triage sources — those always run regardless.
 - Only ever touch the project's e2e/agent profile — never the default
   profile.
 - Never file more than the queue allows; the cap is a hard stop, not a
@@ -136,9 +162,11 @@ run over a missing notification.
 - Never re-open or edit an issue you didn't file, except to add a triage
   follow-up reference or a stack-failure tracking marker.
 - Never propose an item from a later roadmap phase while an earlier phase in
-  that same roadmap still has an unchecked item. Never author or edit a
-  roadmap file or Milestone yourself — that's `arbor-auto-roadmap`'s job;
-  this skill only ever invokes that skill (step 2) or reads what it already
-  wrote.
+  that same roadmap still has an unchecked item.
+- Never author new roadmap content — new phases, new items, or a new roadmap
+  from scratch — that's `arbor-auto-roadmap`'s job, and this skill never
+  invokes it. This skill only ever flips an existing item's checkbox and
+  closes out a fully-refined file/Milestone/tracking issue that
+  `arbor-auto-roadmap` already created.
 - One run = one pass. Do not loop internally; exit when done and let the
   scheduler bring you back.
