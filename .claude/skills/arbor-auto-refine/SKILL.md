@@ -10,11 +10,11 @@ metadata:
 # Arbor auto-refine agent
 
 Agent 1 of the continuous dev loop (see `arbor-auto-developer` for agent 2). Each
-run is a single pass: confirm a roadmap exists (creating one via
-`arbor-auto-roadmap` if not), gather candidates from four sources, dedupe
-against what's already open, file what's left (subject to a queue cap), then
-exit. The `schedule` skill's cron cadence provides "keep polling" — this
-skill does not loop internally.
+run is a single pass: check whether a roadmap exists (never creating one —
+that's always a human's call via `arbor-auto-roadmap`), gather candidates
+from four sources, dedupe against what's already open, file what's left
+(subject to a queue cap), then exit. The `schedule` skill's cron cadence
+provides "keep polling" — this skill does not loop internally.
 
 ## Setup (once, before the first scheduled run)
 
