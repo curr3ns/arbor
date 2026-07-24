@@ -1,6 +1,6 @@
 ---
 name: arbor-auto-refine
-description: Audit this repo's state and the running app to keep the issue backlog topped up with well-scoped, deduped work items — static doc/vision review, roadmap audit (docs/roadmap/ or GitHub Milestones written by arbor-auto-roadmap), dynamic app exploration for bugs, and triage of issues arbor-auto-developer left blocked. When the roadmap audit files an item's backlog issue, immediately flips that item's checkbox and closes the phase/roadmap out (archiving the file, or closing the Milestone and pinned tracking issue) — never waits for the issue to merge, and never invokes arbor-auto-roadmap itself; a roadmap is optional input, not a precondition. Run on a schedule (~every 8h); each run is a single pass, not a loop.
+description: Audit this repo's state and the running app to keep the issue backlog topped up with well-scoped, deduped work items — static doc/vision review, roadmap audit (docs/roadmap/ or GitHub Milestones written by arbor-auto-roadmap), dynamic app exploration for bugs, and triage of issues arbor-auto-developer left blocked. When the roadmap audit files an item's backlog issue, immediately flips that item's checkbox and closes the phase/roadmap out (archiving the file, or closing the Milestone and, if it was the last one, the pinned tracking issue) — never waits for the issue to merge, and never invokes arbor-auto-roadmap itself; a roadmap is optional input, not a precondition. Run on a schedule (~every 8h); each run is a single pass, not a loop.
 license: MIT
 metadata:
   author: arbor
@@ -31,9 +31,13 @@ provides "keep polling" — this skill does not loop internally.
    never invokes it — planning the next roadmap is a human's call, made on
    their own schedule.
 4. Confirm the integration branch `arbor-auto-developer`'s Setup already
-   picked (`gh api repos/{owner}/{repo}/branches/<branch>`) — needed to commit
-   docs-format roadmap bookkeeping (checkbox flips, archiving) directly to it
-   in step 9. GitHub-format bookkeeping needs no branch at all.
+   picked (`gh api repos/{owner}/{repo}/branches/<branch>`) — this is the one
+   copy of docs-format roadmap files that matters. Step 2 and step 4 read
+   `docs/roadmap/*.md` from this branch specifically (fetch or check it out
+   explicitly — never the default branch, and never whatever happens to be
+   checked out locally), and step 9 commits and pushes bookkeeping back to
+   it. GitHub-format bookkeeping needs no branch at all — Milestones and
+   issues aren't branch-scoped.
 
 ## The cycle
 
@@ -45,11 +49,12 @@ You MUST create a todo per step and complete them in order.
    queue depth.
 
 2. **Roadmap check.** Check whether a roadmap exists: any non-archived
-   `docs/roadmap/*.md` file, or any open Milestone. This is informational
-   only — it decides whether step 4 has any candidates to contribute this
-   run, not whether the run continues. If none exists, skip step 4 entirely
-   and continue to step 3; never invoke `arbor-auto-roadmap` — planning the
-   next roadmap is a human's call, on their own schedule.
+   `docs/roadmap/*.md` file on the integration branch confirmed in Setup
+   (not the default branch — see Setup step 4), or any open Milestone. This
+   is informational only — it decides whether step 4 has any candidates to
+   contribute this run, not whether the run continues. If none exists, skip
+   step 4 entirely and continue to step 3; never invoke `arbor-auto-roadmap`
+   — planning the next roadmap is a human's call, on their own schedule.
 
 3. **Static audit.** Read `CLAUDE.md`, `docs/CONVENTIONS.md`, `README.md`
    (product vision), the package boundaries, and `openspec/changes/archive/`
@@ -118,12 +123,18 @@ You MUST create a todo per step and complete them in order.
 9. **Close out refined roadmap items.** For every issue just filed in step 8
    that carries a `Roadmap:` reference line, flip that item's checkbox right
    away — don't wait for the issue to merge:
-   - **Docs format:** edit the referenced `docs/roadmap/<file>.md`, checking
-     `- [x] R<n>` for each newly-filed item. If every item in the file is now
-     checked, `git mv` it to `docs/roadmap/archive/` in the same commit.
-     Commit and push this directly to the integration branch confirmed in
-     Setup — bookkeeping, not a new `arbor-auto-work` cycle. Batch every
-     newly-filed item from this run into one commit.
+   - **Docs format:** fetch the integration branch fresh immediately before
+     editing, so the checkbox flip applies on top of anything
+     `arbor-auto-developer` may have already pushed. Edit the referenced
+     `docs/roadmap/<file>.md`, checking `- [x] R<n>` for each newly-filed
+     item. If every item in the file is now checked, `git mv` it to
+     `docs/roadmap/archive/` in the same commit. Commit and push this
+     directly to the integration branch confirmed in Setup — bookkeeping,
+     not a new `arbor-auto-work` cycle. Batch every newly-filed item from
+     this run into one commit. If the push is rejected (a concurrent push
+     landed first), fetch, rebase onto the new tip, and retry once; if it's
+     still rejected, skip the commit for this run and let the next scheduled
+     run retry — don't force-push, and don't loop retrying within this run.
    - **GitHub format:** PATCH the referenced Milestone's description (`gh api
      repos/{owner}/{repo}/milestones/<n>`) to check each newly-filed item's
      box. If every item in that Milestone is now checked, close it
@@ -168,5 +179,8 @@ run over a missing notification.
   invokes it. This skill only ever flips an existing item's checkbox and
   closes out a fully-refined file/Milestone/tracking issue that
   `arbor-auto-roadmap` already created.
+- Never force-push when reconciling a rejected roadmap-bookkeeping push —
+  fetch, rebase, retry once, then defer to the next scheduled run (see step
+  9).
 - One run = one pass. Do not loop internally; exit when done and let the
   scheduler bring you back.
