@@ -1,22 +1,21 @@
 ---
 name: arbor-auto-roadmap
-description: Interrogates the user to build a multi-phase product roadmap, then writes it either as versioned files under docs/roadmap/ or as GitHub Milestones (one per phase, plus a pinned tracking issue) — the user's choice. Use when planning or re-planning product direction beyond a single slice of work: phases, themes, sequencing, non-goals. Defines the "Roadmap:" reference-line format that arbor-auto-refine reads to turn the earliest incomplete phase's items into backlog issues, and that arbor-auto-developer reads to mark an item off (and archive the phase/close the milestone) once that issue's work merges. Normally user-invoked when there's planning to do, not on a timer — but arbor-auto-refine also invokes it mid-cycle as a precondition fix-up when no roadmap exists yet, in which case it interrogates whoever is present to answer.
+description: Interrogates the user to build a multi-phase product roadmap, then writes it either as versioned files under docs/roadmap/ or as GitHub Milestones (one per phase, plus a pinned tracking issue) — the user's choice. Use when planning or re-planning product direction beyond a single slice of work: phases, themes, sequencing, non-goals. Defines the "Roadmap:" reference-line format that arbor-auto-refine reads to turn the earliest incomplete phase's items into backlog issues — and, in that same run, flips each item's checkbox and closes the phase/roadmap out (archiving the file, or closing the Milestone and, if it was the last one, the pinned tracking issue) as soon as the item is filed. Purely user-invoked when there's planning to do, not on a timer — neither arbor-auto-refine nor arbor-auto-developer ever invoke it automatically.
 license: MIT
 metadata:
   author: arbor
-  version: "1.1"
+  version: "1.2"
 ---
 
 # Arbor auto-roadmap
 
 Companion to `arbor-auto-refine` (agent 1) and `arbor-auto-developer` (agent 2)
-in the continuous dev loop, but not itself part of that loop's cadence — this
-skill runs either because a human invoked it directly when there's planning to
-do, or because `arbor-auto-refine` invoked it mid-cycle as a precondition
-fix-up (its own cycle requires a roadmap to exist and finds none). Either way
-it interrogates whoever is present via `AskUserQuestion`, produces one
-roadmap, and stops. The other two skills poll what it produces; it never
-polls anything itself.
+in the continuous dev loop, but not itself part of that loop's cadence or
+invoked by either of them — this skill only ever runs because a human invoked
+it directly when there's planning to do. It interrogates whoever is present
+via `AskUserQuestion`, produces one roadmap, and stops. The other two skills
+poll what it produces (`arbor-auto-refine` reads and closes it out;
+`arbor-auto-developer` never touches it); it never polls anything itself.
 
 **Generate nothing until the recap in step 6 is approved** — same rule as
 `arbor-project-scaffold`.
@@ -102,22 +101,28 @@ verbatim, one line in its body:
 - Code format: `Roadmap: docs/roadmap/<file>.md#R<n>`
 - GitHub format: `Roadmap: milestone #<milestone-number> item R<n>`
 
-`arbor-auto-developer` greps the body of the issue whose work just merged to
-the integration branch (`gh issue view <n> --json body`) for this line to
-decide whether — and where — to mark an item off, doing so right away rather
-than waiting for the eventual default-branch close. No line means an ordinary
-issue; skip the mark-off step.
+This checkbox means "refined into the backlog," not "shipped."
+`arbor-auto-refine` flips it itself, in the same run it files the issue (its
+step 8/9) — it never waits for that issue to merge. `arbor-auto-developer`
+never reads this line and never touches roadmap content; once an issue is
+filed, that item's roadmap bookkeeping is already done, and
+`arbor-auto-developer`'s only remaining job on it is closing the GitHub issue
+itself via `Closes #N` at merge time.
 
 ## Guardrails
 
 - No files or GitHub objects created before the step 6 recap is approved.
 - Phases are strictly sequential: `arbor-auto-refine` only ever proposes items
-  from the earliest phase that still has an unchecked item — never a later
-  phase while an earlier one is incomplete.
+  from the earliest phase that still has an unchecked item (unchecked means
+  "not yet filed as a backlog issue") — never a later phase while an earlier
+  one is incomplete.
 - Item IDs are permanent once written — never renumbered, never reused after
   an item is dropped.
 - Multiple concurrent roadmaps (several `docs/roadmap/*.md` files, or several
-  open tracking issues) are fine; each is tracked and archived independently.
+  open tracking issues) are fine; each is tracked and closed out
+  independently.
 - This skill only ever writes a *new* roadmap or extends one it's re-invoked
-  on — marking items off and archiving completed roadmaps belongs to
-  `arbor-auto-developer`, never to this skill.
+  on — flipping checkboxes and closing out completed roadmaps belongs to
+  `arbor-auto-refine`, never to this skill. Neither `arbor-auto-refine` nor
+  `arbor-auto-developer` ever invoke this skill automatically; it is only
+  ever run by a human.
