@@ -25,4 +25,15 @@ for skill_dir in "$REPO_DIR/.claude/skills"/*/; do
   link "$skill_dir" "$CLAUDE_DIR/skills/$name"
 done
 
+# Prune symlinks we previously created for skills that no longer exist in this
+# repo. Only touch dangling links that point into this repo's skills dir, so
+# links owned by other sources are left alone.
+skills_src="$REPO_DIR/.claude/skills"
+for dst in "$CLAUDE_DIR/skills"/*; do
+  [ -L "$dst" ] || continue
+  case "$(readlink "$dst")" in
+    "$skills_src"/*) [ -e "$dst" ] || { rm -f "$dst"; echo "  ✗   $dst (removed)"; } ;;
+  esac
+done
+
 echo "Done."
