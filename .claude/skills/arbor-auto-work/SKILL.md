@@ -1,10 +1,10 @@
 ---
 name: arbor-auto-work
-description: Run the mandatory agentic work cycle for a slice of work — assign a work ID, branch, author and apply an OpenSpec change, gate on the project's verification command, archive, commit, push, and integrate. Use when starting or completing any non-trivial change. Defaults to autonomous; pass --interaction to run with approval prompts, or --pr to run autonomously but open a pull request instead of merging.
+description: Run the mandatory agentic work cycle for a slice of work — assign a work ID, branch, author and apply an OpenSpec change, gate on the project's verification command, archive, commit, push, and integrate. Use when starting or completing any non-trivial change. Accepts spec:/work:/gate:/archive: model tokens and forwards them to the lifecycle. Defaults to autonomous; pass --interaction to run with approval prompts, or --pr to run autonomously but open a pull request instead of merging.
 license: MIT
 metadata:
   author: arbor
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Arbor work cycle
@@ -24,12 +24,20 @@ modes:
 ## Inputs
 
 A short description of the slice of work, and optionally the type (`DEV` for
-development — the default — or `INFRA` for infrastructure) and mode
-(`--interaction` or `--pr`).
+development — the default — or `INFRA` for infrastructure), mode (`--interaction`
+or `--pr`), and per-phase model tokens (`spec:`/`work:`/`gate:`/`archive:`, bare
+or behind `--models`). The model tokens are not interpreted here — they are
+stripped from the description and forwarded to `arbor-opsx-auto`, which owns the
+model defaults and parsing (see its **Model selection** section).
 
 ## Steps
 
 You MUST create a todo per step and complete them in order.
+
+0. **Split off model tokens.** Set aside any `spec:`/`work:`/`gate:`/`archive:`
+   tokens (bare or behind `--models`) and the `--interaction`/`--pr` flags. What
+   remains is the work description used everywhere below. Keeping the model
+   tokens out now ensures they never leak into the work-ID slug in steps 2–3.
 
 1. **Determine the slice.** Restate the smallest shippable unit of work. If it's
    too big for one change, stop and split it.
@@ -47,14 +55,15 @@ You MUST create a todo per step and complete them in order.
    features, bugfix for fixes, hotfix for hotfixes), e.g.
    `feature/DEV-4-add-cart`.
 4. **Run the OpenSpec lifecycle.** Invoke the `arbor-opsx-auto` skill with the
-   slice as the work description and the `<TYPE>-<n>-<slug>` change name from
-   step 2. In `--interaction` mode, pass `--interaction` so it asks for approval
-   before apply and before archive. It proposes, applies, runs the project's
-   gate, and archives the change on the current branch, leaving everything
-   uncommitted. **Read back its reported gate outcome** — in particular an
-   environment-blocked stage and its reason, which step 5 must surface. A genuine
-   gate failure or any incomplete task stops the lifecycle there; do not continue
-   to commit.
+   slice as the work description, the `<TYPE>-<n>-<slug>` change name from step 2,
+   and the model tokens set aside in step 0 forwarded verbatim. In
+   `--interaction` mode, pass `--interaction` so it asks for approval before apply
+   and before archive. It proposes, applies, runs the project's gate, and
+   archives the change on the current branch under the requested (or default)
+   per-phase models, leaving everything uncommitted. **Read back its reported gate
+   outcome** — in particular an environment-blocked stage and its reason, which
+   step 5 must surface. A genuine gate failure or any incomplete task stops the
+   lifecycle there; do not continue to commit.
 5. **Commit** with a subject `{ticket} {short description}` (uppercase work ID,
    e.g. `DEV-4 add cart`), optionally followed by a blank line and `-` bullets
    for detail. Follow the repo's commit conventions if documented. If step 4
