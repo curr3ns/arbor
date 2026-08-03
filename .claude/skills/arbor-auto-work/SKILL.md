@@ -60,10 +60,13 @@ You MUST create a todo per step and complete them in order.
    `--interaction` mode, pass `--interaction` so it asks for approval before apply
    and before archive. It proposes, applies, runs the project's gate, and
    archives the change on the current branch under the requested (or default)
-   per-phase models, leaving everything uncommitted. **Read back its reported gate
-   outcome** — in particular an environment-blocked stage and its reason, which
-   step 5 must surface. A genuine gate failure or any incomplete task stops the
-   lifecycle there; do not continue to commit.
+   per-phase models, leaving everything uncommitted. The bar is a change that
+   genuinely satisfies the requested slice to a production standard — the
+   feature actually works, meets the spec's acceptance criteria, and follows the
+   repo's conventions — not merely one that moves through the steps. **Read back
+   its reported gate outcome** — in particular an environment-blocked stage and
+   its reason, which step 5 must surface. A genuine gate failure or any incomplete
+   task stops the lifecycle there; do not continue to commit.
 5. **Commit** with a subject `{ticket} {short description}` (uppercase work ID,
    e.g. `DEV-4 add cart`), optionally followed by a blank line and `-` bullets
    for detail. Follow the repo's commit conventions if documented. If step 4

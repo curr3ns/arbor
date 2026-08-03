@@ -123,25 +123,33 @@ You MUST create a todo per step and complete them in order.
    the resolved change name and the work description. Because the name is
    supplied, propose creates the change (`openspec new change "<name>"`) and
    generates all artifacts — proposal, design, specs, tasks — without stopping to
-   ask what to build. Read back its confirmation.
+   ask what to build. The artifacts must capture the requested work faithfully
+   and completely — the real requirements, clear acceptance criteria, and the
+   edge cases that matter — and break it into concrete, verifiable tasks, so the
+   downstream phases build the right thing rather than a plausible-looking
+   approximation. Read back its confirmation.
 
 4. **Approval before apply (interactive only).** If `--interaction`, summarize
    the proposed change and ask for approval to implement. Autonomous: skip.
 
 5. **Apply (work model).** Dispatch a subagent with `model` = the **work** model,
    instructing it to invoke `openspec-apply-change` autonomously with the
-   explicit change name. It implements every task, following the repo's
-   conventions if present (`CLAUDE.md`, `docs/CONVENTIONS.md`): narrow
-   directories, concise files, reuse, extension, tests beside source. If apply
-   hits a genuine blocker (ambiguous task, error), it reports that back instead
-   of a clean completion — treat that as a real problem and stop, per the
-   guardrails.
+   explicit change name. It implements **every** task completely and to a
+   production standard: the code must genuinely satisfy the requested feature
+   end-to-end — not merely compile or pass a token test — handling the obvious
+   edge cases and error paths, and following the repo's conventions if present
+   (`CLAUDE.md`, `docs/CONVENTIONS.md`): narrow directories, concise files, reuse
+   over duplication, extension over rewrite, tests beside source. If apply hits a
+   genuine blocker (ambiguous task, error), it reports that back instead of a
+   clean completion — treat that as a real problem and stop, per the guardrails.
 
 6. **Run the gate (gate model).** If the project defines a verification command —
    an `npm run gate` / test / lint / build script, or a gate documented in the
-   repo — dispatch a subagent with `model` = the **gate** model to run it and
-   report the outcome. It MUST pass end-to-end; do not proceed otherwise. If the
-   repo defines no such command, note that and continue.
+   repo — dispatch a subagent with `model` = the **gate** model to run the **full**
+   gate — not a convenient subset — and report its outcome faithfully. It MUST
+   pass end-to-end; do not proceed otherwise. A genuine failure is a real defect
+   to surface and fix, never something to work around or paper over. If the repo
+   defines no such command, note that and continue.
 
    Some gates distinguish a stage's outcome into more than plain pass/fail —
    e.g. an e2e/integration stage that can report the environment itself was
@@ -174,7 +182,9 @@ You MUST create a todo per step and complete them in order.
    satisfied. The subagent takes the recommended **delta-spec sync** default
    ("Sync now") — because it runs in a subagent, that fine-grained prompt does
    not surface even in `--interaction`; the step-8 gate is the interactive
-   checkpoint for archiving.
+   checkpoint for archiving. Ensure the synced delta specs accurately reflect
+   what was actually built, so the archived spec stays a faithful record of the
+   system rather than drifting from the code.
 
 10. **Report.** Print the outcome, including the resolved per-phase models.
     **Do not commit** — leave the working tree for the caller.
