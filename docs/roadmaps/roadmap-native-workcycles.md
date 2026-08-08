@@ -106,7 +106,7 @@ that only ever builds what a human roadmapped.
       sequential rule and the one-subagent-at-a-time rule survive; the skill
       still never authors roadmap content.
 
-- [ ] **R5** Add a `--goal` foreground mode to `arbor-auto-developer`. Why: the
+- [x] **R5** Add a `--goal` foreground mode to `arbor-auto-developer`. Why: the
       cron cadence handles unattended burn-down, but a human who wants to watch
       a roadmap finish in one sitting currently has no path; `/goal`'s
       session-scoped Stop hook provides exactly that loop without a fourth
