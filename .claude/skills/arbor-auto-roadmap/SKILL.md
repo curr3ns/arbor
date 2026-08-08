@@ -1,22 +1,23 @@
 ---
 name: arbor-auto-roadmap
-description: Interrogates the user to build a multi-phase product roadmap, then writes it as versioned files under docs/roadmaps/ — one Markdown file per roadmap, one checkbox per item. Use when planning or re-planning product direction beyond a single slice of work: phases, themes, sequencing, non-goals. Defines the docs/roadmaps/<slug>.md#R<n> item-reference format, passed as an argument to arbor-auto-work to identify which item a work cycle is building — a box is checked only once that item has been implemented, gated, and merged. Purely user-invoked when there's planning to do, not on a timer — neither arbor-auto-refine nor arbor-auto-developer ever invoke it automatically.
+description: Interrogates the user to build a multi-phase product roadmap, then writes it as versioned files under docs/roadmaps/ — one Markdown file per roadmap, one checkbox per item. Use when planning or re-planning product direction beyond a single slice of work: phases, themes, sequencing, non-goals. Defines the docs/roadmaps/<slug>.md#R<n> item-reference format, passed as an argument to arbor-auto-work to identify which item a work cycle is building — a box is checked only once that item has been implemented, gated, and merged. Purely user-invoked when there's planning to do — never on a timer, and never invoked automatically by another skill.
 license: MIT
 metadata:
   author: arbor
-  version: "1.3"
+  version: "1.4"
 ---
 
 # Arbor auto-roadmap
 
-Companion to `arbor-auto-refine` (agent 1) and `arbor-auto-developer` (agent 2)
-in the continuous dev loop, but not itself part of that loop's cadence or
-invoked by either of them — this skill only ever runs because a human invoked
-it directly when there's planning to do. It interrogates whoever is present
-via `AskUserQuestion`, produces one roadmap, and stops. The other two skills
-poll what it produces; this skill polls nothing, and never flips a box in a
-roadmap it wrote — a box is checked only once that item has been implemented,
-gated, and merged.
+This skill is the human-invoked planning front end. It sits outside the
+cadence of `arbor-auto-developer`'s scheduled work cycle and is never invoked
+by that cycle — it only ever runs because a human invoked it directly when
+there's planning to do. It interrogates whoever is present via
+`AskUserQuestion`, produces one roadmap, and stops. `arbor-auto-developer`
+reads `docs/roadmaps/*.md` directly as its work queue, and `arbor-auto-work`
+builds a roadmap item and marks it done; this skill polls nothing itself, and
+never flips a box in a roadmap it wrote — a box is checked only once that
+item has been implemented, gated, and merged.
 
 **Generate nothing until the recap in step 5 is approved** — same rule as
 `arbor-project-scaffold`.
@@ -28,17 +29,17 @@ question (`AskUserQuestion` where multiple-choice fits).
 
 1. **Name and vision.** A short roadmap name (becomes the file slug) and a
    one-paragraph statement of the outcome and timeframe this roadmap covers.
-2. **Non-goals.** What this roadmap explicitly does not cover — keeps
-   `arbor-auto-refine` from later expanding scope back into something the user
-   deliberately excluded.
+2. **Non-goals.** What this roadmap explicitly does not cover — the roadmap
+   is the only place that exclusion gets written down, and writing it down is
+   what stops scope from being quietly re-expanded on a later planning pass.
 3. **Phases.** Names and sequence — a roadmap is at least one phase, usually
    two to five. Phases are strictly ordered: later phases don't start until
    the earlier one's items are all checked off (see **Guardrails**).
 4. **Items per phase.** For each phase, the shippable slices that make it up.
    Phrase each like a backlog issue: a "why" plus acceptance criteria, sized
-   like a single OpenSpec change — the same sizing `arbor-auto-refine` already
-   uses when it files issues. An item too big to phrase that way should become
-   two items.
+   like a single OpenSpec change — one roadmap item becomes one
+   `arbor-auto-work` cycle: one branch, one gate, one merge. An item too big
+   to phrase that way should become two items.
 5. **Recap.** Restate name, vision, non-goals, and every phase with its
    items, and get an explicit go before writing anything.
 
@@ -97,5 +98,5 @@ flips the roadmap's last box does.
   fine; each is tracked and completed independently.
 - This skill only ever writes a *new* roadmap or extends one it's re-invoked
   on — it never flips a checkbox and never archives or closes out a roadmap
-  itself. Neither `arbor-auto-refine` nor `arbor-auto-developer` ever invoke
-  this skill automatically; it is only ever run by a human.
+  itself. No other skill ever invokes this skill automatically; it is only
+  ever run by a human.
