@@ -124,7 +124,7 @@ that only ever builds what a human roadmapped.
 
 ## Phase 4: Project scaffolding
 
-- [ ] **R6** Give `arbor-project-scaffold` roadmap awareness. Why: a fresh
+- [x] **R6** Give `arbor-project-scaffold` roadmap awareness. Why: a fresh
       project should land with the directory layout the rest of the loop
       expects, so the first `arbor-auto-roadmap` run has somewhere to write.
       Acceptance criteria: scaffolding creates `docs/roadmaps/` and

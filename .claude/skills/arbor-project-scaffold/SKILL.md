@@ -1,10 +1,10 @@
 ---
 name: arbor-project-scaffold
-description: Use when starting a brand-new project — an empty or nearly-empty directory that needs to become a working repo. Interrogates the user, then scaffolds structure, testing, Docker profiles, OpenSpec, quality rules, the gate, VCS, and CI/CD. Stack-agnostic.
+description: Use when starting a brand-new project — an empty or nearly-empty directory that needs to become a working repo. Interrogates the user, then scaffolds structure, testing, Docker profiles, the docs/roadmaps/ layout the rest of the loop reads, OpenSpec, quality rules, the gate, VCS, and CI/CD, and hands off to arbor-auto-roadmap for planning. Stack-agnostic.
 license: MIT
 metadata:
   author: arbor
-  version: "1.1"
+  version: "1.2"
 ---
 
 # Arbor scaffold
@@ -100,12 +100,21 @@ You MUST create a todo per step and complete them in order.
     stack's equivalent). If the app can't be fully containerized,
     containerize at least its dependencies (db, brokers) and document what
     runs on the host.
-11. **OpenSpec.** Run `openspec init`, then write `openspec/config.yaml`:
+11. **Roadmaps.** Create `docs/roadmaps/` and `docs/roadmaps/archive/`, each
+    holding a `.gitkeep` so both survive the initial commit while empty. This
+    is the layout the rest of the loop expects: `arbor-auto-roadmap` writes
+    plans to `docs/roadmaps/<slug>.md`, `arbor-auto-developer` reads that
+    directory as its work queue, and `arbor-auto-work` migrates a roadmap into
+    `archive/` once its last item is checked. Create the directories only —
+    never author a roadmap file, a phase, or an item here. What the project
+    should build is the user's to plan, and scaffolding a placeholder roadmap
+    would put words in their mouth.
+12. **OpenSpec.** Run `openspec init`, then write `openspec/config.yaml`:
     `schema: spec-driven`; a `context` block covering what the project is,
     stack, structure, conventions, the work-ID/branch/commit process, and the
     two-profile port rule; `rules` for proposal/specs/tasks (SHALL/MUST +
     WHEN/THEN scenarios, grouped small verifiable tasks).
-12. **Quality rules.** `CLAUDE.md` golden rules: agents use the e2e profile
+13. **Quality rules.** `CLAUDE.md` golden rules: agents use the e2e profile
     only (name the ports); all non-trivial work goes through
     `/arbor-auto-work`; the gate is real — name the command; CI/CD runs the
     same gate on every push/PR (name the pipeline, or note there isn't one);
@@ -113,37 +122,44 @@ You MUST create a todo per step and complete them in order.
     narrow drill-down directories, concise self-documenting files, reuse over
     duplication, extension over redefinition, simplest solution, tests beside
     source, file/migration naming, and the coverage exclusion policy.
-13. **Gate.** A single command (`gate` script or stack equivalent) chaining
+14. **Gate.** A single command (`gate` script or stack equivalent) chaining
     lint, typecheck (or stack analog), the migration name-check when one
     exists, coverage-gated tests, build, and e2e-in-Docker (bring the e2e
     stack up, run, tear down). This is the command `/arbor-auto-work` step 6
-    will run, and the command CI/CD calls in step 14.
-14. **CI/CD.** If step 7 confirmed a pipeline, generate its config
+    will run, and the command CI/CD calls in step 15.
+15. **CI/CD.** If step 7 confirmed a pipeline, generate its config
     (`.github/workflows/gate.yml`, `.gitlab-ci.yml`, or the chosen host's
     equivalent): triggers on push and PR to the default branch, checks out
     the repo, installs dependencies, then runs the exact gate command from
-    step 13 — no duplicated or bespoke steps. Skip this step only if the user
+    step 14 — no duplicated or bespoke steps. Skip this step only if the user
     explicitly declined CI/CD in step 7; the recap record notes the decision
     either way.
-15. **VCS.** `git init` (skip if already a repo); `.gitignore` covering IDE
+16. **VCS.** `git init` (skip if already a repo); `.gitignore` covering IDE
     files (`.idea/`, `*.iml`, `.vscode/`), OS noise (`.DS_Store`), local env
     files, dependencies, and build/coverage output. If step 6 asked for a
     remote, create it now with the host's CLI (`gh repo create`,
     `glab repo create`, …) at the agreed visibility and default branch name —
     if the CLI is missing or unauthenticated, stop and tell the user rather
     than silently skipping. Apply the branch protection requested in step 6
-    once both the remote and the CI/CD check from step 14 exist.
+    once both the remote and the CI/CD check from step 15 exist.
 
 ### Phase 3 — Verify and record
 
-16. **Run the gate end-to-end.** It MUST pass on the fresh scaffold. Fix
+17. **Run the gate end-to-end.** It MUST pass on the fresh scaffold. Fix
     until it does; do not proceed otherwise.
-17. **Record the bootstrap.** Author an `INFRA-1-scaffold` OpenSpec change
+18. **Record the bootstrap.** Author an `INFRA-1-scaffold` OpenSpec change
     documenting the structure and archive it immediately — note in it that
     the scaffold was bootstrapped by hand because the cycle it defines did
     not yet exist. Commit everything with subject `INFRA-1 scaffold <name>`,
-    and push to the remote if step 15 created one — this is the commit the
-    CI/CD pipeline from step 14 should turn green on.
+    and push to the remote if step 16 created one — this is the commit the
+    CI/CD pipeline from step 15 should turn green on.
+19. **Hand off to planning.** Close by naming `arbor-auto-roadmap` as the
+    natural next step: the scaffold is a working repo with no plan in it, and
+    that skill is what interrogates the user into one, writing it to the
+    `docs/roadmaps/` directory step 11 created. From there `arbor-auto-developer`
+    burns the roadmap down one item at a time. Name it and stop — do not invoke
+    it, and do not start planning here; it is human-invoked, and this skill's
+    job is finished.
 
 ## Guardrails
 
