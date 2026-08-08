@@ -31,7 +31,7 @@ that only ever builds what a human roadmapped.
 
 ## Phase 1: Retire refine and re-found the roadmap contract
 
-- [ ] **R1** Rewrite `arbor-auto-roadmap` as a files-only planning skill.
+- [x] **R1** Rewrite `arbor-auto-roadmap` as a files-only planning skill.
       Roadmaps are always `docs/roadmaps/<slug>.md`, completing to
       `docs/roadmaps/archive/`. Why: the GitHub Milestones format only existed
       to feed refine's issue-filing path, and with the roadmap becoming the
