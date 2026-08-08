@@ -62,7 +62,7 @@ that only ever builds what a human roadmapped.
 
 ## Phase 2: Close items from the work cycle
 
-- [ ] **R3** Teach `arbor-auto-work` to close the roadmap item it just built.
+- [x] **R3** Teach `arbor-auto-work` to close the roadmap item it just built.
       Why: putting the flip in the work cycle means it rides in the same commit
       on the same branch as the work, so it lands atomically on merge, needs no
       separate bookkeeping push, has no push race to reconcile, and works
