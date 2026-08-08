@@ -1,0 +1,7 @@
+## REMOVED Requirements
+
+### Requirement: Change scope is limited to refine deletion and the roadmap scrub
+
+**Reason**: This requirement was the blast-radius fence for the previous change (`dev-2-delete-auto-refine`), which deleted `arbor-auto-refine` and scrubbed its references out of `arbor-auto-roadmap`. It states that `arbor-auto-work` SHALL NOT be created, modified, moved, or deleted — a rule that was correct for that change and is directly contradicted by this one, which modifies exactly that file to close roadmap items from the work cycle. Leaving it in the live spec set would leave `roadmap-planning` asserting a constraint the repo has deliberately moved past, exactly as `dev-2` found with the equivalent fence left behind by `dev-1`.
+
+**Migration**: None required — no behavior changes and no file under `.claude/skills/arbor-auto-roadmap/` is touched. Scope fencing for the current change lives in the `work-cycle` capability, under **Change scope is limited to the work-cycle skill**, which limits this change to `.claude/skills/arbor-auto-work/SKILL.md` and preserves the same protections for `arbor-opsx-auto`, `arbor-auto-developer`, `arbor-auto-roadmap`, `arbor-project-scaffold`, and `docs/roadmaps/roadmap-native-workcycles.md`. Every other requirement in `roadmap-planning` is unaffected, including the item-reference format `docs/roadmaps/<slug>.md#R<n>`, the checkbox semantics, and the guardrail that `arbor-auto-roadmap` never flips a box or archives a roadmap itself.
