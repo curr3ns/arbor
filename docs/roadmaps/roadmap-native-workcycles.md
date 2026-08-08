@@ -48,7 +48,7 @@ that only ever builds what a human roadmapped.
       never flips its own checkboxes and is still only ever human-invoked; the
       GitHub-only Setup section is removed.
 
-- [ ] **R2** Delete `arbor-auto-refine` and scrub it from
+- [x] **R2** Delete `arbor-auto-refine` and scrub it from
       `arbor-auto-roadmap`. Why: refine flips boxes at issue-filing time, which
       under R1's new semantics would mark unimplemented work as done — it has
       to go in the same phase that redefines the checkbox, not later.
