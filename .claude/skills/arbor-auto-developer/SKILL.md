@@ -1,10 +1,10 @@
 ---
 name: arbor-auto-developer
-description: Reads docs/roadmaps/*.md as the work queue — the human-authored, files-only roadmap set arbor-auto-roadmap produces — excluding docs/roadmaps/archive/. Walks roadmap files in filename order and, within the first roadmap holding an eligible item, selects the earliest incomplete phase's first unchecked, unannotated item. Dispatches exactly one arbor-auto-work subagent, autonomous by default, to build that single item and merge it to main. Never authors roadmap content itself — no item text, no phases, no checkbox flips. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop.
+description: Reads docs/roadmaps/*.md as the work queue — the human-authored, files-only roadmap set arbor-auto-roadmap produces — excluding docs/roadmaps/archive/. Walks roadmap files in filename order and, within the first roadmap holding an eligible item, selects the earliest incomplete phase's first unchecked, unannotated item. Dispatches exactly one arbor-auto-work subagent, autonomous by default, to build that single item and merge it to main. Never authors roadmap content itself — no item text, no phases, no checkbox flips. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop. Also supports an optional foreground --goal mode — invoked with --goal, it sets a session-scoped /goal Stop hook naming one target roadmap and works that roadmap's items one at a time, cycle after cycle, until the roadmap is complete and archived or nothing eligible remains in it — falling back to running cycles back-to-back in-session when /goal is unavailable. The scheduled default with no --goal is unaffected.
 license: MIT
 metadata:
   author: arbor
-  version: "2.0"
+  version: "2.1"
 ---
 
 # Arbor auto-developer agent
@@ -15,11 +15,24 @@ anything this skill creates, seeds, or files itself. Each run is a single
 cycle: read the roadmaps, select the single next eligible item, dispatch one
 `arbor-auto-work` subagent to build and merge it, record the outcome, exit.
 The `schedule` skill's cron cadence (~hourly; it enforces a 1h minimum
-interval) is what provides "keep polling" — this skill never loops
-internally, and never runs two subagents at once. Its only real precondition
-is that at least one human-authored roadmap file exists under
-`docs/roadmaps/`; when none does, that is not a setup failure, it's simply
-nothing to do until a human writes one (see step 3, below).
+interval) is what provides "keep polling" for that default path — this
+skill never loops internally there, and never runs two subagents at once,
+in either mode. The one documented exception to "never loops internally" is
+the foreground `--goal` mode below, where the skill's own cycle repeats,
+across a whole run, instead of waiting for the next scheduled tick. Its
+only real precondition is that at least one human-authored roadmap file
+exists under `docs/roadmaps/`; when none does, that is not a setup failure,
+it's simply nothing to do until a human writes one (see step 3, below).
+
+**Two modes.** Everything above describes the **default, scheduled mode** —
+no flag — which is unattended, paced entirely by that cron tick, and always
+exactly one cycle per invocation. The **foreground goal mode** — `--goal` —
+is different on both axes: it is human-invoked, and it runs not to the next
+tick but to a stated finish line, working a single named roadmap one item
+at a time until that roadmap is complete or nothing eligible remains in it
+(see `## Foreground goal mode (--goal)`, below). Without `--goal`, none of
+that applies — the skill runs exactly one cycle per invocation, exactly as
+described above; `--goal` is the only thing that changes it.
 
 ## The cycle
 
@@ -111,7 +124,14 @@ You MUST create a todo per step and complete them in order.
    If the retry also fails, stop working this item: never make a third
    attempt on it in this run, and never move on to a different item in its
    place in this run — one run is one cycle, and any other eligible item
-   waits for the next scheduled tick.
+   waits for the next scheduled tick. Under `--goal`, the first two rules
+   are unchanged: still no third attempt on this item anywhere in the run,
+   and this cycle still ends here rather than chaining into a replacement.
+   Only the last clause differs — there is no scheduled tick to wait for,
+   so the next eligible item is picked up by the goal run's **next cycle**
+   instead, whose step-1 walk already sees this item's annotation (see
+   `## Foreground goal mode (--goal)`, and the two `--goal` guardrails
+   below).
 
    **Annotate it as blocked and push the annotation to `main`.** Append
    `<!-- blocked: <reason> -->` to the end of the failed item's line, where
@@ -157,6 +177,206 @@ You MUST create a todo per step and complete them in order.
    this tick or any later one. A human unblocks it by fixing the underlying
    cause and deleting the annotation from the roadmap line; after that, the
    item is eligible again on the next walk.
+
+## Foreground goal mode (--goal)
+
+Invoked as `arbor-auto-developer --goal [<roadmap>]`, this mode works a
+single roadmap to completion in one sitting, one item at a time, by
+wrapping the same cycle `## The cycle` already specifies inside `/goal`'s
+session-scoped Stop hook. Everything below is additional to `## The
+cycle`, `## Subagent dispatch`, and `## Notifications` — a goal run's
+individual cycles behave exactly as those sections already describe. This
+section governs only what happens *around* the cycle: what condition gets
+set, which roadmap is targeted, how the run keeps going between cycles,
+how it terminates, and what happens when `/goal` itself is unavailable.
+
+### Setting the goal
+
+Before doing anything else, set a goal via `/goal <condition>` with the
+condition:
+
+> Every item in `docs/roadmaps/<slug>.md` is checked off and the file has been migrated to `docs/roadmaps/archive/`
+
+with `<slug>` replaced by the target roadmap's actual slug (see Target
+roadmap, below) — never left as the literal text `<slug>`. `/goal` installs
+a **session-scoped Stop hook**: it is the hook, not this skill, that keeps
+the session going between items, re-evaluating the condition each time the
+session tries to stop, and it is the hook that auto-clears itself the
+moment the condition holds.
+
+The condition names exactly one roadmap and always keeps the archival
+clause. `arbor-auto-work` `git mv`s a completed roadmap out of
+`docs/roadmaps/` into `docs/roadmaps/archive/` as part of the commit that
+closes its last item, so a condition phrased only against the original
+`docs/roadmaps/<slug>.md` path would, at the very moment of success, be
+evaluated against a file that no longer exists there. Naming the migration
+is what turns the file's disappearance into the success signal instead of
+an ambiguity.
+
+Set the goal exactly once, at the start of the run, and never re-issue
+`/goal` with a different condition mid-session — the roadmap the condition
+names does not change for the life of the run (see Completion handoff,
+below, for what happens once the target finishes).
+
+### Target roadmap
+
+`--goal` takes an optional roadmap argument — a slug (for example
+`roadmap-native-workcycles`) or a full `docs/roadmaps/<slug>.md` path. When
+one is given, that roadmap is the target. When the named roadmap is not
+present among the non-archived `docs/roadmaps/*.md` files, stop the run and
+report that it was not found — never select a different roadmap in its
+place.
+
+With no argument, the target is the **first roadmap holding an eligible
+item**, found by the skill's existing filename-order walk (`## The cycle`,
+step 2) — the same selection the default mode already makes. This
+introduces no new ordering key and no new selection rule.
+
+However it is found, the target is resolved **once**, at the start of the
+run, and then **pinned** for the rest of the run rather than re-derived on
+every iteration. Pinning matters because the walk runs against a moving
+`main`: if the target were re-derived each time, a blocked annotation
+landing in an earlier roadmap, or a human's concurrent edit, could shift
+the walk onto a different file while the `/goal` condition still names the
+original — the skill would then be working roadmap B toward a condition
+that only roadmap A's completion can satisfy, which can then never clear.
+When the session resumes after a Stop-hook re-prompt, recover the target
+from `/goal active` rather than re-running the walk; `/goal active` is the
+authoritative record of what this run committed to, and it survives across
+a re-prompt the way in-context state does not.
+
+Two degenerate starts both resolve the same way: **no goal is set**, the
+skill reports why, and it exits on the same quiet path a scheduled idle
+run takes (`## The cycle`, step 3).
+
+- No non-archived roadmap holds an eligible item at all.
+- The named roadmap exists but holds no eligible item (every item blocked,
+  or every item checked but the file not yet archived).
+
+### Working items one at a time
+
+The goal run works items **one at a time** — the same single dispatch per
+cycle the default mode performs (`## The cycle`, steps 2 and 4), repeated
+for as long as the run continues. Nothing about goal mode changes what a
+cycle does; it changes how many cycles happen and what brings the next one
+about.
+
+Exactly **one subagent is in flight at any moment across the entire goal
+run**, retries included — never two, and never a batch. A retry is
+dispatched only after the attempt it is retrying has finished, exactly as
+in the default mode; goal mode does not relax this for the sake of
+finishing sooner. Each cycle completes fully — dispatch, verification, and
+the resulting notification or blocked annotation — before the next cycle
+begins, and each new cycle re-reads the roadmap queue from `main` (step 1),
+so the previous cycle's merge or annotation is already visible to the walk
+that selects the next item.
+
+Under `/goal`, the repetition belongs to the **hook**, not to this skill's
+own control flow: the skill runs one cycle per turn and then tries to
+stop; the Stop hook is what intercepts that and brings the session back
+for another turn, re-evaluating the condition each time. The skill does
+**not** additionally loop internally while a live Stop hook is driving the
+session — setting the goal and also looping in-session would double the
+work per turn and put a second subagent in flight, which is exactly the
+failure this file rules out. (The fallback, below, is the one case where
+the skill does loop in-session, because there is no hook to do it
+instead.)
+
+"Foreground" describes the human watching the session, not approval
+prompts. Dispatch stays autonomous: subagents still run `arbor-auto-work`
+in its default mode, with no `--interaction` and no `--pr`, exactly as
+`## Subagent dispatch` specifies for the default path.
+
+### Termination: why the loop cannot livelock
+
+Both the `/goal` path and the fallback (below) terminate on the same
+condition: **no eligible item remains in the target roadmap** — either
+because the roadmap is finished and has been archived, or because every
+unchecked item left in it carries a `<!-- blocked: ... -->` annotation. An
+all-blocked roadmap is a **terminating state, not a retry state**: the
+goal run does not re-attempt blocked items to keep itself going, and it
+does not invent a triage pass over them — `## The cycle` step 6's rule
+that blocked items wait for a human holds here unchanged.
+
+The loop cannot livelock, and here is the argument for why. Every
+iteration ends in exactly one of two ways: either the dispatched item
+**merges**, and the roadmap has one fewer unchecked item; or the item
+exhausts its two attempts, gets annotated blocked, and the roadmap has one
+fewer *eligible* item — the annotation, once pushed to `main`, is what
+makes the next iteration's walk skip it. Both quantities are non-negative
+integers over a finite item set, and both strictly decrease on every
+iteration that produces them. There is no third outcome that leaves both
+unchanged. The loop therefore reaches "no eligible item" in a bounded
+number of iterations — at most as many as the roadmap has unchecked items
+— and terminates.
+
+As belt and braces, the goal run also keeps a **session-local record of
+items it has exhausted during the run** and treats them as ineligible for
+the remainder of the run, regardless of whether the blocked-annotation
+push landed on `main`. This matters because step 6's push-as-a-race
+procedure legitimately *drops* the annotation in two cases — the item was
+independently checked off, or another actor already annotated it — and
+while both of those outcomes happen to leave the item ineligible on the
+next walk anyway, a termination argument that depends on a push having
+succeeded is weaker than one that does not.
+
+### Clearing the goal on an unsatisfied terminal state
+
+When the loop terminates without the condition holding — the all-blocked
+case, or any other case where the run ends with the target roadmap neither
+finished nor archived — issue `/goal clear` **itself**, before stopping.
+The reason: in that state the condition is false and will stay false,
+since nothing further is going to happen to this roadmap without a human;
+a Stop hook left active would keep re-prompting a session that has
+correctly concluded there is nothing left to do, forever. Report which
+items are blocked and why as part of stopping, so a human can act without
+re-reading the roadmap.
+
+When the condition **does** hold — the target roadmap is finished and
+archived — rely on the hook's own auto-clear instead; do not issue `/goal
+clear` in that case, and do not treat it as required. The two terminal
+states are asymmetric on purpose: one needs the skill to intervene, the
+other does not.
+
+### `/goal` availability and the fallback
+
+`/goal` requires a **trusted workspace** and **unrestricted hooks**. It
+fails in an untrusted workspace ("/goal is only available in trusted
+workspaces. Restart, accept the trust dialog, and try again.") and it
+fails when hooks are restricted — either `disableAllHooks` or
+`allowManagedHooksOnly` set in settings or by policy ("/goal can't run
+while hooks are restricted (disableAllHooks or allowManagedHooksOnly is
+set in settings or by policy)."). Stop hooks are also **REPL-only**, so a
+non-REPL invocation of this skill cannot have one either — a third,
+independent reason `/goal` may be unavailable, on top of the two settings
+above.
+
+When `/goal` cannot be set for any of these reasons, do not abort the run.
+Instead, **report which reason applied** — untrusted workspace,
+`disableAllHooks`, `allowManagedHooksOnly`, or non-REPL — as prose in the
+session (this report is not a `PushNotification`; the notification set
+stays exactly the three events in `## Notifications`), and then **fall
+back to running cycles back-to-back in-session**: the same single-item
+cycle described in `## The cycle` and in Working items one at a time,
+above, dispatched one after another, each one waited out before the next
+begins, until no eligible item remains in the target roadmap. The fallback
+is not a second algorithm — it shares the target-selection rule, the
+one-subagent guardrail, the attempt budget, and the termination condition
+with the `/goal` path; the only thing missing is the hook, so the skill
+supplies the repetition itself instead of relying on one.
+
+### Completion handoff
+
+A goal run finishes **one** roadmap. If the target completes — the
+condition holds and the hook clears — while other non-archived roadmaps
+still hold eligible items, the run ends there; it does not roll onto
+another roadmap in the same run. (The condition names one `<slug>`, and
+re-issuing `/goal` with a different condition mid-session is exactly what
+Setting the goal, above, rules out.) The closing report names which
+roadmaps still hold eligible work and states the invocation that would
+continue with the next one — `--goal` with no argument, or `--goal
+<next-slug>` — so a human who wants to keep going knows the one command to
+type.
 
 ## Subagent dispatch
 
@@ -231,9 +451,30 @@ notification itself was delivered.
 - **At most two attempts per item per run** — one original plus one retry —
   on the same roadmap item. A third attempt, in this run, is never made, and
   a different item is never picked up in its place within the same run.
-- **One run = one cycle.** Do not loop internally; exit as soon as the item
-  is handled (merged, or blocked-and-annotated) or the walk finds nothing
-  eligible, and let the scheduler bring you back.
+- **Under `--goal`, that budget is per item, not per run.** A goal run spans
+  many items across many cycles, so "per run" here reads as **per item**: at
+  most two attempts — one original plus one retry — on the same item,
+  however many other items the run has already worked. An item that
+  exhausts its budget is annotated blocked and is thereafter skipped by the
+  walk, so it never gets a third attempt later in the same goal run either.
+  This does not loosen the guardrail above; it says what "run" scopes to
+  once a run can span more than one item.
+- **Under `--goal`, "never move on to a different item in its place" is a
+  within-cycle rule.** A cycle that exhausts its budget does not chain into
+  a different item — it ends, annotated blocked. A goal run reaches its
+  next item only by **starting a new cycle**, whose step-1 walk re-reads
+  `main` and so already sees the annotation; that is a new cycle selecting
+  a new item, not a failed cycle picking a replacement, and it is how
+  `## Foreground goal mode (--goal)` continues past a blocked item without
+  contradicting this guardrail.
+- **One run = one cycle — on the default, scheduled invocation.** Do not
+  loop internally; exit as soon as the item is handled (merged, or
+  blocked-and-annotated) or the walk finds nothing eligible, and let the
+  scheduler bring you back. The one exception is `--goal`
+  (`## Foreground goal mode (--goal)`): when that flag was passed, this
+  repetition is licensed — by the Stop hook on the `/goal` path, or
+  in-session on the fallback — until the goal run's own termination
+  condition (same section) is met.
 - **Repo-scoped, maintainer identity only.** Only ever touch branches and
   roadmap files in this repo, under the maintainer's own identity — no
   cross-repo activity.
