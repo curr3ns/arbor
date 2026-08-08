@@ -1,156 +1,251 @@
 ---
 name: arbor-auto-developer
-description: Poll for feedback on the integration branch's pull request (unresolved review comments, failing CI) first, then the issue backlog, implementing the highest-priority item one at a time via arbor-auto-work --autonomous overridden to integrate against a dedicated integration branch instead of the default branch. Keeps a single running PR from the integration branch to the default branch up to date for human review. Never touches roadmap content — arbor-auto-refine flips a roadmap item's checkbox and closes it out at filing time, not this skill at merge time. Self-seeds the backlog with one arbor-auto-refine pass when the queue is empty and there's no PR feedback to address. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop.
+description: Reads docs/roadmaps/*.md as the work queue — the human-authored, files-only roadmap set arbor-auto-roadmap produces — excluding docs/roadmaps/archive/. Walks roadmap files in filename order and, within the first roadmap holding an eligible item, selects the earliest incomplete phase's first unchecked, unannotated item. Dispatches exactly one arbor-auto-work subagent, autonomous by default, to build that single item and merge it to main. Never authors roadmap content itself — no item text, no phases, no checkbox flips. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop.
 license: MIT
 metadata:
   author: arbor
-  version: "1.4"
+  version: "2.0"
 ---
 
 # Arbor auto-developer agent
 
-Agent 2 of the continuous dev loop (see `arbor-auto-refine` for agent 1). Each
-run is a single cycle: react to feedback on the integration branch's PR if
-there is any, otherwise pick one issue, dispatch one subagent to handle it,
-record the outcome, exit. If the issue queue starts empty (and there's no PR
-feedback to address), the run also self-seeds with one `arbor-auto-refine` pass
-before picking — that's still part of the same one cycle, not a second loop.
-The `schedule` skill's cron cadence provides "keep polling" — this skill does
-not loop internally, and never runs two subagents at once.
-
-## Setup (once, before the first scheduled run)
-
-1. Confirm `gh auth status` works and note the repo
-   (`gh repo view --json nameWithOwner`).
-2. **Pick the integration branch** — a branch distinct from the repo's
-   default branch (e.g. `develop`) that every autonomous merge targets
-   instead, so this loop never merges to the default branch directly.
-   Confirm it exists (`gh api repos/{owner}/{repo}/branches/<branch>`). If
-   the repo has no such branch yet, that's a setup decision to make
-   explicitly before relying on the loop — create one, or don't enable this
-   skill for a repo where merges must go straight to the default branch.
-3. Confirm the `arbor-auto-work` skill is present and working.
+A scheduled burn-down agent. Its queue is `docs/roadmaps/*.md` — the
+multi-phase, human-authored roadmaps `arbor-auto-roadmap` writes — never
+anything this skill creates, seeds, or files itself. Each run is a single
+cycle: read the roadmaps, select the single next eligible item, dispatch one
+`arbor-auto-work` subagent to build and merge it, record the outcome, exit.
+The `schedule` skill's cron cadence (~hourly; it enforces a 1h minimum
+interval) is what provides "keep polling" — this skill never loops
+internally, and never runs two subagents at once. Its only real precondition
+is that at least one human-authored roadmap file exists under
+`docs/roadmaps/`; when none does, that is not a setup failure, it's simply
+nothing to do until a human writes one (see step 3, below).
 
 ## The cycle
 
 You MUST create a todo per step and complete them in order.
 
-1. **Check the integration branch's PR.** Look for an open PR from the
-   integration branch into the default branch, authored under this loop's
-   identity:
-   ```bash
-   gh pr list --head <integration-branch> --base <default-branch> \
-     --author "@me" --state open --json number,reviews,reviewDecision
-   ```
-   If one exists:
-   - **P0 — PR feedback.** Unresolved review threads
-     (`gh api repos/{owner}/{repo}/pulls/<n>/comments`) and
-     `CHANGES_REQUESTED` reviews. Ignore resolved threads and plain
-     approvals.
-   - **P1 — failing CI.** Any failing checks on that PR (`gh pr checks <n>`).
+1. **Read the queue.** Read the non-archived roadmap files `docs/roadmaps/*.md`
+   as they stand on `main` — not on whatever branch happens to be locally
+   checked out, which could be stale relative to a cycle that already merged.
+   `docs/roadmaps/archive/` is explicitly excluded: it holds roadmaps a
+   previous cycle has already completed and archived, and a recursive search
+   (`find`, `rg --files`, `**/*.md`) over `docs/roadmaps/` would resurrect
+   that already-done work as an endless supply of "eligible" items. Read only
+   the top-level glob.
 
-   If P0 or P1 has anything actionable, go to step 2 (PR feedback path) and
-   skip the issue queue entirely this cycle. Otherwise skip to step 3 (issue
-   queue path).
+2. **Select exactly one item.** Walk the non-archived roadmap files in
+   filename order. Within the **first roadmap holding an eligible item** —
+   not merely the first roadmap with any unchecked item — take that
+   roadmap's earliest incomplete phase, and within that phase take the first
+   unchecked item that does not carry a blocked annotation
+   (`<!-- blocked: ... -->`). That single item is the cycle's selection;
+   never select, batch, or queue more than one.
 
-2. **Address PR feedback (P0/P1 path).** Dispatch exactly one subagent:
-   check out the integration branch, address every listed review comment /
-   fix the failing checks, run the project gate, push. Then **reply to and
-   resolve** each addressed review thread so it is not reprocessed next
-   cycle. Do not touch resolved threads or approvals. Send the
-   feedback-addressed notification (see Notifications) and end the run here
-   — do not also touch the issue queue in the same cycle.
+   Phases are the `## Phase <k>: <name>` headings in file order. A phase is
+   **incomplete** when at least one item under it is unchecked — whether or
+   not that item carries a blocked annotation. A blocked item is still
+   unchecked, so it still counts toward its phase being incomplete, and later
+   phases in that roadmap stay closed regardless of the annotation.
 
-3. **Issue queue (P2 path) — only reached when step 1 found no PR or no
-   actionable feedback on it.**
-   1. **List open issues**
-      (`gh issue list --state open --json number,title,body,labels`).
-   2. **Self-seed if empty.** If the queue is empty, run the `arbor-auto-refine`
-      skill for exactly one pass (in-process — no subagent dispatch needed),
-      then re-list open issues. Never invoke `arbor-auto-refine` a second
-      time in the same run, regardless of what the one pass finds. If the
-      queue is *still* empty after that one pass, **end the run now** — no
-      dispatch, no notification, nothing else to do until the next scheduled
-      tick.
-   3. **Order by priority.** Sort by the `priority:*` label — `priority:1`
-      first, then `priority:2`, then `priority:3`; issues with no
-      `priority:*` label sort last.
-   4. **Select the single highest-priority issue.**
-   5. **Dispatch exactly one subagent** (see Subagent dispatch below) and
-      wait for it to finish. Never dispatch a second subagent while one is in
-      flight.
-   6. **On success:** the subagent's merge closes the issue via its
-      `Closes #N` commit trailer once the integration branch itself reaches
-      the default branch — verify the merge landed on the integration branch
-      (`git log <integration-branch> --oneline -1` or equivalent). Then
-      **ensure the running PR exists**: if no open PR from the integration
-      branch to the default branch exists yet, open one now (title
-      summarizing the batch, body listing accumulated work); if one already
-      exists, its diff updates automatically from the push — nothing further
-      to do. Send the merge-landed notification. This skill never touches
-      roadmap content — if the issue carried a `Roadmap:` reference line,
-      `arbor-auto-refine` already flipped that checkbox (and closed out the
-      phase/roadmap, if warranted) back when it filed the issue.
-   7. **On gate failure:** dispatch exactly one retry subagent in a fresh
-      context, passing the failure output. If the retry also fails, leave
-      the issue open, post a comment on it explaining the failure (what
-      broke, at which gate step), send the blocked notification, and stop —
-      never a third attempt on the same issue in the same run (blocked
-      issues wait for `arbor-auto-refine`'s triage or a human).
+   Two cases resolve the walk explicitly, because the plausible reading gets
+   both of them wrong:
+
+   - **An all-blocked roadmap yields nothing, and the walk moves on.** If
+     every unchecked item in a roadmap carries a blocked annotation, that
+     roadmap holds no eligible item. Do not end the run here — continue the
+     walk to the next roadmap file by filename.
+   - **A blocked earliest phase does not fall through to a later phase in the
+     same roadmap.** If the earliest incomplete phase's unchecked items are
+     all blocked-annotated, do **not** select an item from a later phase of
+     that same roadmap, even if that later phase has unchecked, unannotated
+     items of its own. Phases are strictly sequential: a later phase is
+     never worked while an earlier phase still holds an unchecked item,
+     blocked or not. That roadmap yields nothing this cycle, and the walk
+     continues to the **next roadmap file** — never to a later phase of this
+     one.
+
+3. **If nothing is eligible, end the run quietly.** This covers two distinct
+   cases, and both end the run the same way — no dispatch, no notification,
+   no error:
+
+   - No eligible item exists in any non-archived roadmap (every roadmap is
+     fully checked, or every unchecked item — in the file, or specifically in
+     its earliest incomplete phase — carries a blocked annotation).
+   - No non-archived roadmap file exists at all under `docs/roadmaps/`, or
+     the directory doesn't exist.
+
+   Neither case is a setup failure or a misconfiguration. Do not create
+   `docs/roadmaps/`, do not invoke `arbor-auto-roadmap`, and do not report a
+   problem — there is simply nothing to do until the next scheduled tick.
+
+4. **Dispatch exactly one subagent** for the selected item (see Subagent
+   dispatch, below) and wait for it to finish before doing anything else.
+
+5. **On success** (`outcome: shipped`): confirm the merge actually landed on
+   `main` — e.g. `git log main --oneline -1` reflects the returned
+   `work_id`/`branch` — rather than taking the subagent's report on faith.
+   Send the merge-landed notification (see Notifications).
+
+   Then **observe roadmap completion**; do not compute it independently. If
+   the merged item was the last unchecked item in its file, `arbor-auto-work`
+   already performed the archival as part of that same work commit: the
+   roadmap file is gone from `docs/roadmaps/` and present under
+   `docs/roadmaps/archive/`, and the commit body carries a
+   `- Roadmap <slug> complete; archived` bullet. When you see that signal,
+   treat the roadmap as complete and also send the roadmap-complete
+   notification — merge-landed and roadmap-complete are separate events, and
+   both fire; neither replaces the other. This skill itself never moves,
+   copies, renames, or deletes a roadmap file, and never creates
+   `docs/roadmaps/archive/` — that belongs entirely to `arbor-auto-work`'s
+   own work commit.
+
+6. **On any outcome other than `shipped`** — a gate failure reported as
+   `failed`, or a `blocked` result where the cycle could not run at all:
+   dispatch exactly one retry
+   subagent, in a fresh context, passing the first attempt's failure output.
+   Wait for it to finish before doing anything else — the retry reuses the
+   cycle's one subagent slot sequentially; it is never a second, concurrent
+   subagent.
+
+   If the retry also fails, stop working this item: never make a third
+   attempt on it in this run, and never move on to a different item in its
+   place in this run — one run is one cycle, and any other eligible item
+   waits for the next scheduled tick.
+
+   **Annotate it as blocked and push the annotation to `main`.** Append
+   `<!-- blocked: <reason> -->` to the end of the failed item's line, where
+   `<reason>` is a one-line summary of what broke and at which gate step
+   (for example: `<!-- blocked: gate failed at tests — 3 failing specs in
+   cart module -->`). Leave the item's existing text byte-identical before
+   and after — never reword, reflow, re-wrap, or renumber the item or any of
+   its continuation lines — and leave its checkbox unchecked. Commit and push
+   this single-line change directly to `main`; it must not be left as an
+   uncommitted working-tree change or stranded on a side branch. This is
+   bookkeeping so a later cycle's walk skips the item and one bad item
+   cannot stall the rest of the roadmap — it is not authorship of the item
+   (see Guardrails).
+
+   **Handle the push as a race**, because `main` can move between when you
+   read the item and when you push the annotation — another cycle's merge, a
+   human's commit, a concurrent roadmap edit. If the push is rejected:
+
+   1. Fetch and rebase — or re-pull and re-apply the annotation — onto the
+      current `main`.
+   2. Re-locate the item's line by its `**R<n>**` marker, never by line
+      number: a concurrent edit is the first thing to invalidate a line
+      number.
+   3. Re-check, on the current `main`, that the item is still `- [ ]` and
+      still carries no blocked annotation.
+   4. If both still hold, push again. If that push is rejected too, repeat
+      from step 1.
+   5. If either re-check fails — the item is now `- [x] **R<n>**`, or it
+      already carries a blocked annotation — **drop the annotation** instead
+      of pushing it. A checked box means the item genuinely got built; an
+      existing annotation already achieves the goal. Never force-push `main`
+      to make an annotation land — that is never proportionate for a
+      bookkeeping comment, no matter how many times the push has been
+      rejected.
+
+   Send the blocked notification (see Notifications) once the retry has
+   failed for the second time, regardless of whether the annotation push
+   landed or was dropped per the rule above — the notification reports that
+   the item is blocked, which is true either way.
+
+   Blocked items wait for a human. This skill invents no re-attempt or
+   triage policy: nothing here re-attempts a blocked item automatically, on
+   this tick or any later one. A human unblocks it by fixing the underlying
+   cause and deleting the annotation from the roadmap line; after that, the
+   item is eligible again on the next walk.
 
 ## Subagent dispatch
 
-Dispatch a fresh subagent with a self-contained prompt containing the full
-issue body and number, and these explicit instructions:
+Dispatch a fresh subagent with a **self-contained** prompt — it shares no
+context with this cycle, so hand it everything it needs rather than a
+pointer back to the roadmap:
 
-- Run the `arbor-auto-work` skill in **autonomous** mode (its default — no
-  `--interaction`, no `--pr`) for this issue's slice of work.
-- **Override the integration branch to the branch chosen in Setup, not the
-  repo's default branch**: branch off it (not off whatever `arbor-auto-work` would
-  otherwise default to), and the final merge target is it. This is a
-  per-dispatch instruction to the subagent, not a change to `arbor-auto-work`
-  itself — `arbor-auto-work` run directly by a human still defaults to the repo's
-  default branch.
-- Include a `Closes #<issue-number>` trailer in the commit message so GitHub
-  closes the issue once that commit reaches the default branch.
-- Return a compact result:
-  `{ outcome: shipped | blocked | failed, work_id, branch, note }`.
+- The selected item's **full text**, verbatim — the why-plus-acceptance-
+  criteria `arbor-auto-roadmap` requires each item to be phrased as.
+- The item's reference in the form `roadmap:docs/roadmaps/<slug>.md#R<n>`,
+  exactly as `arbor-auto-work` documents it, so it can validate the item and
+  flip its checkbox on a successful commit.
+- An instruction to run the `arbor-auto-work` skill in **autonomous mode —
+  its default: no `--interaction`, no `--pr`.**
+
+Do not instruct the subagent to override the merge target. `main` is already
+`arbor-auto-work`'s own default, so nothing here directs it to branch off,
+or merge into, anything else.
+
+The subagent returns a compact result: `{ outcome, work_id, branch, note }`.
+Read `outcome` to drive the success/retry/blocked branching in steps 5 and 6
+above, and quote `work_id` and `branch` in notifications. Treat it as a
+two-way branch, so that every possible value is handled: `shipped` means the
+merge landed and routes to step 5; **anything else** means it did not, and
+routes to step 6 — `failed` for a gate failure, `blocked` where the cycle
+could not run at all (`arbor-auto-work` stops before committing if, say, the
+`roadmap:` reference does not resolve), and likewise a missing or
+unrecognised value. Step 6's retry-then-annotate path is the correct response
+in every one of those cases: the retry either clears a transient problem or
+confirms the item genuinely cannot be built right now, and the annotation
+then stops that one item from stalling the roadmap.
+
+Exactly one subagent is in flight at any moment — never two. The cycle waits
+for the dispatched subagent to finish before doing anything else, including
+before dispatching a retry; a retry subagent is only ever dispatched after
+the first attempt has completed.
 
 ## Notifications
 
-Send a `PushNotification` (one line, under 200 chars, leading with what's
-actionable) when:
-- A dispatched subagent's merge lands on the integration branch.
-- PR feedback (review comments or failing CI) was addressed and pushed.
-- An issue is left blocked after a second failed attempt.
+Send a `PushNotification` — one line, under 200 characters, leading with
+what's actionable — on exactly these three events, and no others:
 
-Do **not** notify when dispatching (only on the outcome), and do not notify
-for a routine successful run beyond the pings above. If `PushNotification`
-isn't available in this run's environment, rely on the issue comment
-(blocked case), the resolved review thread (PR-feedback case), or the
-closed-issue state (success case) and continue; don't fail the run over a
-missing notification.
+- **Merge landed** — the dispatched subagent's merge landed on `main`.
+- **Item blocked after retry** — the retry also failed and the item's
+  two-attempt budget is exhausted for this run.
+- **Roadmap complete** — the item just merged was the last unchecked item in
+  its file.
+
+Merge-landed and roadmap-complete can both be true of the same cycle; when
+they are, send both — neither replaces the other.
+
+**Do not notify on dispatch**, and **do not notify on a quiet idle run** —
+these are rules, not omissions. A subagent starting work is not yet an
+outcome, and an hourly cron reporting "nothing to do" on every tick trains
+the operator to ignore the channel, which then also buries the notifications
+that actually matter.
+
+If `PushNotification` is unavailable in this run's environment, continue
+without failing the run — the merge on `main`, the blocked annotation, and
+the archived roadmap file are all durable records regardless of whether the
+notification itself was delivered.
 
 ## Guardrails
 
-- Sequential only: exactly one subagent in flight at a time.
-- Never invoke `arbor-auto-refine` more than once per run, even if the queue is
-  still empty afterward.
-- Never merge into the repo's default branch — every dispatch merges into
-  the integration branch chosen in Setup. The loop may open or update a PR
-  from the integration branch to the default branch for human review, but
-  only a human merges that PR.
-- At most one open PR from the integration branch to the default branch at a
-  time — reuse it, never open a second.
-- Never touch roadmap content in any form — no checkbox, file, Milestone, or
-  tracking issue. That's entirely `arbor-auto-refine`'s job now, done at
-  issue-filing time.
-- P0/P1 (PR feedback) always takes priority over the issue queue in a given
-  cycle — never pick up a new issue while there's unaddressed feedback on the
-  running PR.
-- Never make more than 2 attempts (1 original + 1 retry) on the same issue,
-  or the same round of PR feedback, in a run.
-- One run = one cycle. Do not loop internally; exit when done (or idle) and
-  let the scheduler bring you back.
-- Only ever touch issues/branches/PRs in this repo, under the maintainer's
-  own identity — no cross-repo activity.
+- **Phases are strictly sequential.** A later phase is never worked while an
+  earlier phase in the same roadmap still holds an unchecked item —
+  blocked-annotated or not. A fully blocked earliest phase does not open the
+  door to a later phase; it closes that roadmap for the cycle instead.
+- **Exactly one subagent in flight at a time, never two.** A retry follows
+  the first attempt sequentially, once it has finished; it never overlaps
+  it.
+- **At most two attempts per item per run** — one original plus one retry —
+  on the same roadmap item. A third attempt, in this run, is never made, and
+  a different item is never picked up in its place within the same run.
+- **One run = one cycle.** Do not loop internally; exit as soon as the item
+  is handled (merged, or blocked-and-annotated) or the walk finds nothing
+  eligible, and let the scheduler bring you back.
+- **Repo-scoped, maintainer identity only.** Only ever touch branches and
+  roadmap files in this repo, under the maintainer's own identity — no
+  cross-repo activity.
+- **Never author roadmap content.** Never write or edit an item's text,
+  never add, remove, or rename a phase, never flip a checkbox in either
+  direction, and never invoke `arbor-auto-roadmap`. The checkbox flip
+  belongs entirely to `arbor-auto-work`, inside its own work commit — this
+  skill does not flip one itself even when it observes a merge that plainly
+  should have flipped one; an unflipped box after a merge is an upstream bug
+  in the work cycle, not something to patch here.
+- **The blocked annotation is the one exception, and it is bookkeeping, not
+  authorship.** Appending `<!-- blocked: <reason> -->` to a twice-failed
+  item's line is the single write this skill ever makes to a roadmap file.
+  It records what happened to an item; it does not write what the item is.
+  Being granted this one write licenses nothing else on the list above.

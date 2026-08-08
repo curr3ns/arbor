@@ -83,7 +83,7 @@ that only ever builds what a human roadmapped.
 
 ## Phase 3: Make the roadmap the queue
 
-- [ ] **R4** Rewrite `arbor-auto-developer` to read `docs/roadmaps/*.md` as its
+- [x] **R4** Rewrite `arbor-auto-developer` to read `docs/roadmaps/*.md` as its
       work queue and merge to `main`. Why: with the checkbox meaning
       "implemented" and refine gone, the roadmap is already an ordered,
       deduped, human-authored backlog — a second queue in GitHub adds
