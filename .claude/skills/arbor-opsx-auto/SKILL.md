@@ -94,6 +94,34 @@ and does not create a branch, commit, push, or merge. If you need any of that,
 use `arbor-auto-work`, which wraps this skill with the work-ID/branch/commit/
 push/integrate cycle.
 
+## Code standards
+
+The apply phase's dispatch prompt MUST carry these standards verbatim — the
+subagent never reads this file.
+
+**The code is the documentation.** Meaning lives in intention-revealing names,
+functions small enough to do one thing, signatures and types that state the
+contract, and control flow shallow enough to read top to bottom. Effort that
+would go into explaining a confusing block goes into making the block
+unconfusing. A comment is never a substitute for a clearer name or a smaller
+function.
+
+**A comment earns its place only by carrying what the code cannot:** why a
+non-obvious approach beat the obvious one, a constraint imposed from outside (a
+protocol quirk, an upstream bug, a measured performance trade-off), or a warning
+about a consequence a reader would not predict. Public-API doc comments follow
+whatever convention the repo already uses.
+
+Everything else stays out: no narration of what the next line does, no
+step-by-step running commentary, no change-name or ticket references, no
+restating a task from `tasks.md`, no banner comments labelling sections that
+names already label. The record of *what changed and why* lives in the OpenSpec
+artifacts and the commit — not in the source.
+
+Judge the result by the code, not by its annotations. Heavily commented code a
+reader still has to decode has failed this standard; uncommented code that reads
+plainly has met it.
+
 ## Workflow
 
 ```
@@ -138,8 +166,11 @@ You MUST create a todo per step and complete them in order.
    production standard: the code must genuinely satisfy the requested feature
    end-to-end — not merely compile or pass a token test — handling the obvious
    edge cases and error paths, and following the repo's conventions if present
-   (`CLAUDE.md`, `docs/CONVENTIONS.md`): narrow directories, concise files, reuse
-   over duplication, extension over rewrite, tests beside source. If apply hits a
+   (`CLAUDE.md`, `docs/CONVENTIONS.md`): narrow directories, concise
+   self-documenting files, reuse over duplication, extension over rewrite, tests
+   beside source. Include the **Code standards** section above in this dispatch
+   prompt — the subagent is judged on code that reads plainly, not on code that
+   annotates itself. If apply hits a
    genuine blocker (ambiguous task, error), it reports that back instead of a
    clean completion — treat that as a real problem and stop, per the guardrails.
 
@@ -232,6 +263,8 @@ Working tree left uncommitted. Commit when ready (or let arbor-auto-work handle 
 - **Never silently skip verification.** An environment-blocked gate stage may
   proceed, but only with the reason surfaced in the report so the committer can
   note it.
+- **Always pass the code standards into the apply dispatch.** Self-documenting
+  code is part of the apply phase's definition of done, not a stylistic extra.
 - **Reject malformed model tokens.** An unknown phase key or model name stops the
   run before any phase is dispatched — never silently drop it or substitute a
   default.
