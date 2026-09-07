@@ -37,7 +37,7 @@ question (`AskUserQuestion` where multiple-choice fits).
    the earlier one's items are all checked off (see **Guardrails**).
 4. **Items per phase.** For each phase, the shippable slices that make it up.
    Phrase each like a backlog issue: a "why" plus acceptance criteria, sized
-   like a single OpenSpec change — one roadmap item becomes one
+   like a single work cycle — one roadmap item becomes one
    `arbor-auto-work` cycle: one branch, one gate, one merge. An item too big
    to phrase that way should become two items.
 5. **Recap.** Restate name, vision, non-goals, and every phase with its

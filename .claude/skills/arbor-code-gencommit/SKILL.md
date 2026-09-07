@@ -18,11 +18,11 @@ If the user provided a ticket argument (e.g. `ABC-123`), store it as `TICKET`. O
 Run both commands and combine the output:
 
 ```bash
-git diff --cached -- . ':(exclude)openspec/' ':(exclude).kiro/'
-git diff -- . ':(exclude)openspec/' ':(exclude).kiro/'
+git diff --cached -- . ':(exclude).kiro/'
+git diff -- . ':(exclude).kiro/'
 ```
 
-If both return empty, report "Nothing to commit (openspec/kiro-only changes or clean working tree)" and stop.
+If both return empty, report "Nothing to commit (kiro-only changes or clean working tree)" and stop.
 
 ### 3. Generate the commit message
 
@@ -38,7 +38,7 @@ Rules:
 - Summary line: past tense, ≤72 characters, no period; prefix with `TICKET ` (no colon) if set
 - **Blank line between the summary and the bullets, always.** Without it, `git commit -F` treats the message as one unbroken paragraph and folds every bullet into the subject line instead of the commit body.
 - Each bullet: past tense, one short phrase, no filler words, no periods
-- Omit openspec, .kiro, and test-related changes from bullets **unless the diff contains only test changes** — in that case include them
+- Omit .kiro and test-related changes from bullets **unless the diff contains only test changes** — in that case include them
 - No prose body, no "this commit", no redundant bullets
 
 Example:

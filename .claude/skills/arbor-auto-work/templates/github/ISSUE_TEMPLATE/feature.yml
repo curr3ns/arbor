@@ -1,0 +1,44 @@
+name: Feature
+description: A capability this project should gain. Becomes one agent work cycle.
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An agent implements this issue end to end and merges its own pull request.
+        The acceptance criteria below are the contract it is verified against, so
+        write them as things that can be observed and checked.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is missing or broken today, and who it affects. State this before any solution.
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      description: >
+        One checkable statement per line — an input and an output, a visible behaviour,
+        an error case. The agent maps each one to code before it may merge.
+      placeholder: |
+        - [ ] Saving a document writes a record carrying the current schema version
+        - [ ] Loading a record with an unknown schema version fails with an error naming the version
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: What this issue explicitly does not cover, so scope cannot drift mid-cycle.
+  - type: input
+    id: packages
+    attributes:
+      label: Packages likely touched
+      placeholder: core, api
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes for the agent
+      description: Constraints, prior art in the repo, or decisions already made. Leave blank to let the agent choose.

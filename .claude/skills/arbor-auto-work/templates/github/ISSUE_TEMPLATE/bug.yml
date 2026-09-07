@@ -1,0 +1,31 @@
+name: Bug
+description: Something in this project behaves incorrectly. Becomes one agent work cycle.
+labels: ['bug']
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happens
+      description: The incorrect behaviour, and where you saw it.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen instead
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Steps, or the command that surfaces it. Name the environment profile if ports matter.
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      description: >
+        Defaults to "the reproduction no longer reproduces, covered by a regression test".
+        Add anything further the fix must satisfy.
