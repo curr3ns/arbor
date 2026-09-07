@@ -1,6 +1,6 @@
 ---
 name: arbor-project-scaffold
-description: Use when starting a brand-new project — an empty or nearly-empty directory that needs to become a working repo. Interrogates the user, then scaffolds structure, testing, Docker profiles, an optional local reverse proxy, the docs/roadmaps/ layout the rest of the loop reads, OpenSpec, quality rules, the gate, VCS, and CI/CD, and hands off to arbor-auto-roadmap for planning. Stack-agnostic.
+description: Use when starting a brand-new project — an empty or nearly-empty directory that needs to become a working repo. Interrogates the user, then scaffolds structure, testing, Docker profiles, an optional local reverse proxy, the docs/roadmaps/ layout the rest of the loop reads, quality rules, the gate, VCS, and CI/CD, and hands off to arbor-auto-roadmap for planning. Stack-agnostic.
 license: MIT
 metadata:
   author: arbor
@@ -10,7 +10,7 @@ metadata:
 # Arbor scaffold
 
 Turn an empty directory into a project with the arbor house practices baked in:
-`packages/` subdivision, OpenSpec + the `/arbor-auto-work` cycle, a real verification
+`packages/` subdivision, the `/arbor-auto-work` cycle, a real verification
 gate, two Docker profiles on a claimed port block, local proxy hostnames when
 a reverse proxy is available, VCS and CI/CD wiring, and
 quality rules for both agents and humans. Stack-agnostic: interrogate first,
@@ -33,8 +33,8 @@ You MUST create a todo per step and complete them in order.
 ### Phase 1 — Interrogate
 
 1. **Preflight, then what is being built.** First verify the environment the
-   later steps depend on — `docker info` and `openspec --version` both
-   succeed; the directory contains nothing beyond dotfiles/README — and stop
+   later steps depend on — `docker info` succeeds; the directory contains
+   nothing beyond dotfiles/README — and stop
    with a clear message if not. Then interrogate: domain, kind of application
    (web app, API, CLI, library, pipeline…), and stack, down to the choices the
    scaffold needs (framework, package/dependency manager, language version).
@@ -107,7 +107,7 @@ You MUST create a todo per step and complete them in order.
     they glob over, resolving symlinks; `~/Infrastructure/nginx` is the usual
     answer, with `/opt/homebrew/etc/nginx` and `/etc/nginx` as fallbacks on
     an unconfigured machine. If either check fails, skip the whole step and
-    say so in the step 20 hand-off; the project is fully usable on raw ports,
+    say so in the step 19 hand-off; the project is fully usable on raw ports,
     so a missing proxy is a skipped convenience, never a failure.
 
     The root is organised project-first, one directory per project holding
@@ -198,12 +198,7 @@ You MUST create a todo per step and complete them in order.
     never author a roadmap file, a phase, or an item here. What the project
     should build is the user's to plan, and scaffolding a placeholder roadmap
     would put words in their mouth.
-13. **OpenSpec.** Run `openspec init`, then write `openspec/config.yaml`:
-    `schema: spec-driven`; a `context` block covering what the project is,
-    stack, structure, conventions, the work-ID/branch/commit process, and the
-    two-profile port rule; `rules` for proposal/specs/tasks (SHALL/MUST +
-    WHEN/THEN scenarios, grouped small verifiable tasks).
-14. **Quality rules.** `CLAUDE.md` golden rules: agents use the e2e profile
+13. **Quality rules.** `CLAUDE.md` golden rules: agents use the e2e profile
     only (name the ports, and the `<sub>.e2e.<name>.local` URLs when step 11
     created them); all non-trivial work goes through
     `/arbor-auto-work`; the gate is real — name the command; CI/CD runs the
@@ -212,38 +207,37 @@ You MUST create a todo per step and complete them in order.
     narrow drill-down directories, concise self-documenting files, reuse over
     duplication, extension over redefinition, simplest solution, tests beside
     source, file/migration naming, and the coverage exclusion policy.
-15. **Gate.** A single command (`gate` script or stack equivalent) chaining
+14. **Gate.** A single command (`gate` script or stack equivalent) chaining
     lint, typecheck (or stack analog), the migration name-check when one
     exists, coverage-gated tests, build, and e2e-in-Docker (bring the e2e
     stack up, run, tear down). This is the command `/arbor-auto-work` step 6
-    will run, and the command CI/CD calls in step 16.
-16. **CI/CD.** If step 7 confirmed a pipeline, generate its config
+    will run, and the command CI/CD calls in step 15.
+15. **CI/CD.** If step 7 confirmed a pipeline, generate its config
     (`.github/workflows/gate.yml`, `.gitlab-ci.yml`, or the chosen host's
     equivalent): triggers on push and PR to the default branch, checks out
     the repo, installs dependencies, then runs the exact gate command from
-    step 15 — no duplicated or bespoke steps. Skip this step only if the user
+    step 14 — no duplicated or bespoke steps. Skip this step only if the user
     explicitly declined CI/CD in step 7; the recap record notes the decision
     either way.
-17. **VCS.** `git init` (skip if already a repo); `.gitignore` covering IDE
+16. **VCS.** `git init` (skip if already a repo); `.gitignore` covering IDE
     files (`.idea/`, `*.iml`, `.vscode/`), OS noise (`.DS_Store`), local env
     files, dependencies, and build/coverage output. If step 6 asked for a
     remote, create it now with the host's CLI (`gh repo create`,
     `glab repo create`, …) at the agreed visibility and default branch name —
     if the CLI is missing or unauthenticated, stop and tell the user rather
     than silently skipping. Apply the branch protection requested in step 6
-    once both the remote and the CI/CD check from step 16 exist.
+    once both the remote and the CI/CD check from step 15 exist.
 
 ### Phase 3 — Verify and record
 
-18. **Run the gate end-to-end.** It MUST pass on the fresh scaffold. Fix
+17. **Run the gate end-to-end.** It MUST pass on the fresh scaffold. Fix
     until it does; do not proceed otherwise.
-19. **Record the bootstrap.** Author an `INFRA-1-scaffold` OpenSpec change
-    documenting the structure and archive it immediately — note in it that
-    the scaffold was bootstrapped by hand because the cycle it defines did
-    not yet exist. Commit everything with subject `INFRA-1 scaffold <name>`,
-    and push to the remote if step 17 created one — this is the commit the
-    CI/CD pipeline from step 16 should turn green on.
-20. **Hand off to planning.** Close by naming `arbor-auto-roadmap` as the
+18. **Record the bootstrap.** Commit everything with subject
+    `INFRA-1 scaffold <name>`, and a body noting what was scaffolded and that
+    the scaffold was bootstrapped by hand because the `/arbor-auto-work` cycle
+    it sets up did not yet exist. Push to the remote if step 16 created one —
+    this is the commit the CI/CD pipeline from step 15 should turn green on.
+19. **Hand off to planning.** Close by naming `arbor-auto-roadmap` as the
     natural next step: the scaffold is a working repo with no plan in it, and
     that skill is what interrogates the user into one, writing it to the
     `docs/roadmaps/` directory step 12 created. From there `arbor-auto-developer`

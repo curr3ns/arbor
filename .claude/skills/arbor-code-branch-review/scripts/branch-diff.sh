@@ -151,7 +151,6 @@ git diff --name-status --find-renames "$RANGE" 2>/dev/null \
 
 is_excluded() {
   case "$1" in
-    openspec/*|*/openspec/*|.openspec/*)                 echo spec; return 0 ;;
     .kiro/*|*/.kiro/*|specs/*|*/specs/*)                 echo spec; return 0 ;;
     docs/*|*/docs/*|doc/*|*/doc/*|*.rst|*.adoc)          echo docs; return 0 ;;
     README*|*/README*|CHANGELOG*|*/CHANGELOG*)           echo docs; return 0 ;;

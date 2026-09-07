@@ -1,6 +1,6 @@
 ---
 name: arbor-code-branch-review
-description: Summarize everything that changed on a branch relative to its base for a developer who generated the code with AI. Diffs against the inferred fork point (development by default, or any --base/--remote/range), strips OpenSpec and other spec, doc, lockfile, and generated noise, then walks the remaining code block by block — what each block does and how it hangs together — and finishes with a quick code review. Writes a Markdown report to a tmp file and opens it. Use when the user wants to understand, hand off, or sanity-check a branch of AI-written code before merging.
+description: Summarize everything that changed on a branch relative to its base for a developer who generated the code with AI. Diffs against the inferred fork point (development by default, or any --base/--remote/range), strips spec, doc, lockfile, and generated noise, then walks the remaining code block by block — what each block does and how it hangs together — and finishes with a quick code review. Writes a Markdown report to a tmp file and opens it. Use when the user wants to understand, hand off, or sanity-check a branch of AI-written code before merging.
 license: MIT
 metadata:
   author: arbor
@@ -150,8 +150,8 @@ of findings by severity. The report holds the detail; do not reprint it in chat.
 ## Scope — what this skill does NOT do
 
 It reads. It writes exactly one file, the report, in a tmp directory. It never
-edits the code it reviews, never commits, never pushes, never merges, and never
-touches `openspec/`. If the review finds something worth fixing, say so and stop
+edits the code it reviews, never commits, never pushes, and never merges.
+If the review finds something worth fixing, say so and stop
 — fixing it is a separate request, and `arbor-auto-work` is where that goes.
 
 Uncommitted working-tree changes are **not** included; the script warns when it

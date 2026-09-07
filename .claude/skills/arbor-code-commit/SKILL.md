@@ -35,13 +35,13 @@ commit" and stop.
 Run both commands and combine the output:
 
 ```bash
-git diff --cached -- . ':(exclude)openspec/' ':(exclude).kiro/'
-git diff -- . ':(exclude)openspec/' ':(exclude).kiro/'
+git diff --cached -- . ':(exclude).kiro/'
+git diff -- . ':(exclude).kiro/'
 ```
 
 If this combined diff is empty but step 2 staged real changes, those changes
-are openspec/.kiro-only — skip to step 4 with a plain factual summary (e.g.
-`{TICKET } Updated openspec change tracking`) instead of stopping; there is
+are .kiro-only — skip to step 4 with a plain factual summary (e.g.
+`{TICKET } Updated spec tracking`) instead of stopping; there is
 still something real to commit even though it's excluded from the bullets.
 
 ### 4. Generate the commit message
@@ -62,7 +62,7 @@ Rules (same convention as arbor-code-gencommit):
   folds every bullet into the subject line — the bullets must be the commit
   body, not part of the subject.
 - Each bullet: past tense, one short phrase, no filler words, no periods
-- Omit openspec, .kiro, and test-related changes from bullets **unless the
+- Omit .kiro and test-related changes from bullets **unless the
   diff contains only test changes** — in that case include them
 - No prose body, no "this commit", no redundant bullets
 
