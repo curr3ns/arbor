@@ -14,10 +14,11 @@ cadence of `arbor-auto-developer`'s scheduled work cycle and is never invoked
 by that cycle — it only ever runs because a human invoked it directly when
 there's planning to do. It interrogates whoever is present via
 `AskUserQuestion`, produces one roadmap, and stops. `arbor-auto-developer`
-reads `docs/roadmaps/*.md` directly as its work queue, and `arbor-auto-work`
-builds a roadmap item and marks it done; this skill polls nothing itself, and
-never flips a box in a roadmap it wrote — a box is checked only once that
-item has been implemented, gated, and merged.
+reads `docs/roadmaps/*.md` directly as one of its two work queues — the one
+it uses wherever the repo has no GitHub issues available to work instead —
+and `arbor-auto-work` builds a roadmap item and marks it done; this skill
+polls nothing itself, and never flips a box in a roadmap it wrote — a box is
+checked only once that item has been implemented, gated, and merged.
 
 **Generate nothing until the recap in step 5 is approved** — same rule as
 `arbor-project-scaffold`.

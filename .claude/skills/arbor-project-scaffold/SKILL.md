@@ -193,9 +193,10 @@ You MUST create a todo per step and complete them in order.
     holding a `.gitkeep` so both survive the initial commit while empty. This
     is the layout the rest of the loop expects: `arbor-auto-roadmap` writes
     plans to `docs/roadmaps/<slug>.md`, `arbor-auto-developer` reads that
-    directory as its work queue, and `arbor-auto-work` migrates a roadmap into
-    `archive/` once its last item is checked. Create the directories only —
-    never author a roadmap file, a phase, or an item here. What the project
+    directory as its work queue wherever the repo has no GitHub issues to
+    work instead, and `arbor-auto-work` migrates a roadmap into `archive/`
+    once its last item is checked. Create the directories only — never
+    author a roadmap file, a phase, or an item here. What the project
     should build is the user's to plan, and scaffolding a placeholder roadmap
     would put words in their mouth.
 13. **Quality rules.** `CLAUDE.md` golden rules: agents use the e2e profile
@@ -240,10 +241,11 @@ You MUST create a todo per step and complete them in order.
 19. **Hand off to planning.** Close by naming `arbor-auto-roadmap` as the
     natural next step: the scaffold is a working repo with no plan in it, and
     that skill is what interrogates the user into one, writing it to the
-    `docs/roadmaps/` directory step 12 created. From there `arbor-auto-developer`
-    burns the roadmap down one item at a time. Name it and stop — do not invoke
-    it, and do not start planning here; it is human-invoked, and this skill's
-    job is finished.
+    `docs/roadmaps/` directory step 12 created. From there
+    `arbor-auto-developer` burns that roadmap down one item at a time —
+    unless the repo has GitHub issues to work, which it takes first. Name it
+    and stop — do not invoke it, and do not start planning here; it is
+    human-invoked, and this skill's job is finished.
 
 ## Guardrails
 

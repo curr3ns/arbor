@@ -4,7 +4,7 @@ description: Run the mandatory agentic work cycle for a slice of work — take t
 license: MIT
 metadata:
   author: arbor
-  version: "3.0"
+  version: "3.1"
 ---
 
 # Arbor work cycle
@@ -262,6 +262,14 @@ You MUST create a todo per step and complete them in order.
    beside source. The bar is work that genuinely satisfies the slice, not work
    that moves through the steps.
 
+   Where the gate enforces a threshold — a coverage percentage, a lint rule, a
+   type-strictness setting, a size budget — it is met by changing the code, never
+   by weakening the threshold. A branch that is hard to cover gets **lifted into a
+   tested module**; it is never added to a coverage exclusion list, and no rule is
+   suppressed inline, no escape hatch reached for (a non-null assertion, an
+   `any`, a disabled check), to make a number go green. Moving the goalposts is a
+   failed cycle wearing a green gate.
+
    Stay inside the slice's scope. Unrelated problems you notice are follow-up
    work to report at step 10, not extra commits on this branch. If the phase hits
    a genuine blocker — an ambiguous task, an error it cannot clear — it reports
@@ -276,6 +284,13 @@ You MUST create a todo per step and complete them in order.
    defect to surface and fix, never something to work around or paper over. If
    the repo defines no such command, note that and continue.
 
+   A full gate can outrun a foreground command timeout — a cold container build, a
+   large test matrix, an e2e suite. Run it in the background and wait on
+   completion rather than polling blindly or trimming stages to fit. Where the
+   repo has no CI, this local run is the only verification the change will ever
+   get; treat it accordingly. Keep the passing run's tail — it is the gate
+   evidence step 10 puts in the pull request or the merge note.
+
    Some gates distinguish a stage's outcome into more than plain pass/fail —
    e.g. an e2e/integration stage that can report the environment itself was
    unreachable (no daemon, registry egress blocked, stack never came up)
@@ -289,7 +304,14 @@ You MUST create a todo per step and complete them in order.
      step 10. Never treat it as a shortcut.
    - **Genuine failure** (the stage ran and failed): a real implementation
      problem, never reclassified as environment-blocked — go back to step 5 to
-     fix it, then re-run this gate.
+     fix it, then re-run **the whole gate**, not just the stage that failed. An
+     earlier stage can regress on the fix, and only a full green run is evidence.
+
+   A failure that looks incidental rather than caused by the change — a registry
+   hiccup mid-build, a container that never became healthy, a process killed under
+   host memory pressure — may be re-run **once** before it is treated as real. A
+   test that actually executed and failed its assertion is real on the first run;
+   never re-roll one of those hoping for a different answer.
 
    A genuine gate failure stops the cycle here; do not continue to the intent
    gate or the commit on a red gate.
@@ -339,22 +361,36 @@ You MUST create a todo per step and complete them in order.
    `roadmap:` reference was supplied, add `- Roadmap: <slug> R<n> complete`
    (`<slug>` is the roadmap filename without its `.md` extension); if the flip
    also archived the file, additionally add `- Roadmap <slug> complete;
-   archived`. If an `issue:` reference was supplied **and this cycle ends in a
-   merge** (autonomous, no `--pr`), add a `Closes #<n>` line so the merge to the
-   default branch closes the issue; when the cycle ends in a pull request
-   instead, `Closes #<n>` belongs in the PR body at step 10, not here. All of
-   these bullets are independent and may appear together in one commit body.
+   archived`. If an `issue:` reference was supplied **and this cycle merges
+   straight to the default branch**, add a `Closes #<n>` line so that merge
+   closes the issue; when the work lands through a pull request instead —
+   `--pr`, interactive, or an autonomous self-merge in a repo that integrates
+   through pull requests — `Closes #<n>` belongs in the PR body at step 10, not
+   here. All of these bullets are independent and may appear together in one
+   commit body.
 
 9. **Push** the branch.
 
 10. **Integrate and close out.** Autonomous: merge to `main` — unless `--pr` was
     passed, in which case push and open a pull request instead of merging.
-    Interactive: ask for approval, then open a pull request. Where the repo ships
-    a pull request template, fill it; otherwise the body carries `Closes #<n>` in
-    issue mode, the step 7 verdict table mapping each acceptance criterion to the
-    code that satisfies it, the gate evidence from step 6 (including any
-    environment-blocked stage and its reason), and the assumptions from the
-    intent contract.
+    Interactive: ask for approval, then open a pull request.
+
+    Where the repo integrates through pull requests, an autonomous cycle still
+    goes through one — open it, then merge it yourself:
+
+    ```bash
+    gh pr merge <pr> --merge --delete-branch
+    ```
+
+    That is a self-merge, not a review request: no human approves it, and the
+    pull request exists to carry the record. `Closes #<n>` then lives in the PR
+    body rather than the commit, and closes the issue when the merge lands.
+
+    Where the repo ships a pull request template, fill it; otherwise the body
+    carries `Closes #<n>` in issue mode, the step 7 verdict table mapping each
+    acceptance criterion to the code that satisfies it, the gate evidence from
+    step 6 (including any environment-blocked stage and its reason), and the
+    assumptions from the intent contract.
 
     If a merge conflicts, rebase onto the default branch, then re-run **both**
     gates — step 6's verification gate in full and step 7's intent gate — before
@@ -467,5 +503,10 @@ issue mode copies them into its `.github/`; see `templates/README.md`.
 - **Never author or re-scope issues or roadmap items.** You claim them, build
   them, and close them; the developer writes them. Follow-up work is reported in
   a comment, never filed as new work by you.
+- **Describe the project on its own terms.** Never position or explain it by
+  naming or comparing against another software product — not in code, docs,
+  commits, issues, or pull requests. Naming a tool the project actually depends
+  on or is migrating from is ordinary and fine; framing the project as an
+  alternative to something else is not.
 - One change = one work ID = one branch = one work source. Keep them in sync, and
   never batch two issues or two roadmap items into one cycle.
