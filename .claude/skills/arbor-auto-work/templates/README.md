@@ -35,10 +35,17 @@ gh label create "agent:needs-clarification" -c "#fbca04" -d "Ambiguous intent; q
 gh label create "p0" -c "#b60205" -d "Highest selection priority"
 gh label create "p1" -c "#d93f0b" -d "Normal selection priority"
 gh label create "p2" -c "#fef2c0" -d "Lowest selection priority"
+gh label create "epic" -c "#3e4b9e" -d "Umbrella/tracking issue; never built directly"
 ```
 
 `issue:next` orders on `p0` > `p1` > `p2` > unlabelled, so priority labels are
-optional — an unlabelled issue is still selectable, just last.
+optional — an unlabelled issue is still selectable, just last. `epic` marks an
+umbrella issue (the one `arbor-auto-roadmap` files per roadmap) that selection
+always skips.
+
+These templates are GitHub-only. A repo whose work lives in Jira needs no setup
+here: `arbor-auto-work`'s Jira mode uses hyphenated labels (`agent-working`, …)
+that Jira creates on first use.
 
 ## Why the criteria field is required
 

@@ -1,10 +1,10 @@
 ---
 name: arbor-auto-work
-description: Run the mandatory agentic work cycle for a slice of work — take the intent, assign a work ID, branch, plan the slice into acceptance criteria and tasks, implement it, gate on the project's verification command, verify the diff against the intent, commit, push, and integrate. Use when starting or completing any non-trivial change. Each phase runs as a subagent under a per-phase model (defaults plan=opus, work=sonnet, gate=haiku), overridable with plan:/work:/gate: tokens, plus its own review: token for the intent gate, an optional roadmap: item reference this cycle closes out on commit, and an optional issue: reference (a number, or issue:next to select one) making a GitHub issue the cycle's contract — claimed, verified against, and closed on merge. Defaults to autonomous; pass --interaction to run with approval prompts, or --pr to run autonomously but open a pull request instead of merging.
+description: Run the mandatory agentic work cycle for a slice of work — take the intent, assign a work ID, branch, plan the slice into acceptance criteria and tasks, implement it, gate on the project's verification command, verify the diff against the intent, commit, push, and integrate. Use when starting or completing any non-trivial change. Each phase runs as a subagent under a per-phase model (defaults plan=opus, work=sonnet, gate=haiku), overridable with plan:/work:/gate: tokens, plus its own review: token for the intent gate, an optional roadmap: item reference this cycle closes out on commit, an optional issue: reference (a number, or issue:next to select one) making a GitHub issue the cycle's contract — claimed, verified against, and closed on merge — and an optional jira: reference (an issue key, or jira:next to select one from the project recorded in .arbor/config.json) doing the same for a Jira issue. Defaults to autonomous; pass --interaction to run with approval prompts, or --pr to run autonomously but open a pull request instead of merging.
 license: MIT
 metadata:
   author: arbor
-  version: "3.1"
+  version: "3.2"
 ---
 
 # Arbor work cycle
@@ -55,12 +55,15 @@ development — the default — or `INFRA` for infrastructure), mode (`--interac
 or `--pr`), per-phase model tokens (`plan:`/`work:`/`gate:`, bare or behind
 `--models`), a `review:` model for the intent gate, a roadmap item reference
 (`roadmap:docs/roadmaps/<slug>.md#R<n>`, the format `arbor-auto-roadmap` defines)
-naming the roadmap item this cycle is building, and an issue reference
+naming the roadmap item this cycle is building, an issue reference
 (`issue:<n>`, or `issue:next` to select one) naming the GitHub issue this cycle
-is building.
+is building, and a Jira reference (`jira:<KEY-n>`, or `jira:next` to select one)
+naming the Jira issue this cycle is building.
 
-The roadmap and issue references are both optional and independent: omitting both
-runs the cycle unchanged — no flip, no claim, no close-out, no error.
+The roadmap and tracker references are all optional: omitting them runs the
+cycle unchanged — no flip, no claim, no close-out, no error. `issue:` and
+`jira:` are mutually exclusive — one cycle builds one tracker issue — and
+passing both is a hard error at step 0.
 
 ## Model selection
 
@@ -93,7 +96,7 @@ replaces human review.
   comma-separated list of them behind `--models` — is a model assignment and is
   removed from the input.
 - After removing model tokens, the `--interaction`/`--pr` flags, and any
-  `roadmap:`/`issue:` token, whatever remains is the work description.
+  `roadmap:`/`issue:`/`jira:` token, whatever remains is the work description.
 - An **unknown phase key or model name** (e.g. `wrok:sonnet`, `plan:opua`) is a
   hard error: **stop and report** it. Never silently ignore a mistyped override
   or fall back to a default in its place.
@@ -106,27 +109,35 @@ gate sees the implementation's edits.
 
 ## Work sources
 
-Three ways a cycle learns what to build. They differ only in where the intent
+Four ways a cycle learns what to build. They differ only in where the intent
 comes from and what is closed out at the end; steps 2–6 and 9 are identical in
-all three.
+all four.
 
 | Source                | Intent contract is…                                            | Closed out by…                                 |
 | --------------------- | -------------------------------------------------------------- | ---------------------------------------------- |
 | `issue:<n>`           | the issue body and its comments, restated as a contract comment  | `Closes #<n>` plus the label swap in step 10   |
+| `jira:<KEY-n>`        | the same, on the Jira issue (see `## Jira mode`)                 | a Done transition plus the label swap          |
 | `roadmap:…#R<n>`      | the item's why-plus-acceptance-criteria text, verbatim            | the checkbox flip and commit bullets in step 8 |
 | neither (description) | the description, made concrete by the plan written in step 4     | nothing beyond the commit                      |
 
 Whichever applies, that source's acceptance criteria are what the intent gate at
-step 7 checks the diff against. Passing both `issue:` and `roadmap:` is allowed —
-an issue that builds a roadmap item — and both close-outs then run.
+step 7 checks the diff against. Passing a tracker reference (`issue:` or `jira:`)
+together with `roadmap:` is allowed — an issue that builds a roadmap item — and
+both close-outs then run.
+
+**Issue mode** below means either tracker. The steps are written against
+GitHub's `gh` commands; in Jira mode each of those operations is swapped for its
+Jira equivalent from `## Jira mode`, and everything else — claim before branch,
+intent contract before code, close out only after the merge — is unchanged.
 
 ## Steps
 
 You MUST create a todo per step and complete them in order.
 
-0. **Split off model, roadmap, and issue tokens.** Set aside any
+0. **Split off model, roadmap, and tracker tokens.** Set aside any
    `plan:`/`work:`/`gate:`/`review:` tokens (bare or behind `--models`), the
-   `--interaction`/`--pr` flags, any `roadmap:` token, and any `issue:` token.
+   `--interaction`/`--pr` flags, any `roadmap:` token, and any `issue:` or
+   `jira:` token.
    Reject an unknown phase key or model name with a hard error — stop and report,
    before any branch is created or any issue is claimed. Fill unspecified phases
    with their defaults (plan=opus, work=sonnet, gate=haiku, review=opus) and hold
@@ -136,8 +147,9 @@ You MUST create a todo per step and complete them in order.
 
    **Preconditions.** Before touching anything: the working tree is clean
    (`git status --porcelain` is empty), you are on the default branch, and it is
-   up to date (`git pull --ff-only`). In issue mode, `gh auth status` must also
-   succeed. Any failure stops the run here.
+   up to date (`git pull --ff-only`). In GitHub issue mode, `gh auth status`
+   must also succeed; in Jira mode, the Jira access check from `## Jira mode`
+   must. Any failure stops the run here.
 
    If a `roadmap:` token was supplied, resolve and validate it now, before the
    branch is created in step 3: `docs/roadmaps/<slug>.md` must exist, it must
@@ -149,6 +161,9 @@ You MUST create a todo per step and complete them in order.
    missing, never search `docs/roadmaps/archive/` for the item); the file
    exists but has no item with that `R<n>`; the item exists but its box is
    already `- [x]`.
+
+   If a `jira:` token was supplied, resolve and claim it exactly as below, using
+   the Jira lock query, eligibility query, and claim from `## Jira mode`.
 
    If an `issue:` token was supplied, resolve and **claim** the issue now, also
    before the branch exists. First check the lock — no other cycle may hold one:
@@ -162,12 +177,12 @@ You MUST create a todo per step and complete them in order.
    once. Then resolve the reference:
 
    - `issue:<n>` — use that issue. It must be open, must not be a pull request,
-     and must not carry `agent:blocked` or `agent:needs-clarification`. Each of
-     those is a hard error that stops the run.
+     and must not carry `agent:blocked`, `agent:needs-clarification`, or
+     `epic`. Each of those is a hard error that stops the run.
    - `issue:next` — select the first eligible issue: open, not a pull request,
-     not labelled `agent:blocked` or `agent:needs-clarification`, unassigned,
-     ordered by priority label `p0` > `p1` > `p2` > unlabelled, then oldest
-     `createdAt`.
+     not labelled `agent:blocked`, `agent:needs-clarification`, or `epic`,
+     unassigned, ordered by priority label `p0` > `p1` > `p2` > unlabelled,
+     then oldest `createdAt`.
 
      ```bash
      gh issue list --state open --limit 50 \
@@ -224,7 +239,10 @@ You MUST create a todo per step and complete them in order.
    Form the work ID `<TYPE>-<n>-<slug>`: uppercase type prefix, lowercase
    kebab-case slug (e.g. `DEV-4-add-cart`). It is assigned this way in every
    mode: an issue number is a reference the cycle carries, never the work-ID
-   counter, so `issue:42` does not make the work ID `DEV-42-<slug>`.
+   counter, so `issue:42` does not make the work ID `DEV-42-<slug>`, and
+   `jira:SHOP-42` does not make it `SHOP-42-<slug>`. A Jira key has the same
+   shape as a work ID, so it never goes in a commit subject or a branch name —
+   only in the commit body (step 8) — or the scan above would count it.
 
 3. **Create the branch** `feature|bugfix|hotfix/<id>-<slug>` (feature for
    features, bugfix for fixes, hotfix for hotfixes), e.g.
@@ -366,8 +384,10 @@ You MUST create a todo per step and complete them in order.
    closes the issue; when the work lands through a pull request instead —
    `--pr`, interactive, or an autonomous self-merge in a repo that integrates
    through pull requests — `Closes #<n>` belongs in the PR body at step 10, not
-   here. All of these bullets are independent and may appear together in one
-   commit body.
+   here. If a `jira:` reference was supplied, add a `Jira: <KEY-n>` line to the
+   body — never the subject — in every integration mode; Jira closes on the
+   explicit transition at step 10, not on a commit keyword. All of these
+   bullets are independent and may appear together in one commit body.
 
 9. **Push** the branch.
 
@@ -387,7 +407,7 @@ You MUST create a todo per step and complete them in order.
     body rather than the commit, and closes the issue when the merge lands.
 
     Where the repo ships a pull request template, fill it; otherwise the body
-    carries `Closes #<n>` in issue mode, the step 7 verdict table mapping each
+    carries `Closes #<n>` in GitHub issue mode (`Jira: <KEY-n>` in Jira mode), the step 7 verdict table mapping each
     acceptance criterion to the code that satisfies it, the gate evidence from
     step 6 (including any environment-blocked stage and its reason), and the
     assumptions from the intent contract.
@@ -405,6 +425,11 @@ You MUST create a todo per step and complete them in order.
     gh issue edit <n> --remove-label "agent:working" --add-label "agent:done"
     gh issue comment <n> --body "..."  # PR/commit link, criteria table, follow-ups worth filing
     ```
+
+    In Jira mode the close-out is the same sequence through `## Jira mode`: pull
+    `main`, transition the issue to done, swap `agent-working` for `agent-done`,
+    and post the closing comment. Nothing closes a Jira issue implicitly, so the
+    transition is always explicit.
 
     Follow-ups are *reported* in that comment for the developer to triage. Never
     file them as issues yourself.
@@ -453,7 +478,9 @@ gh issue comment <n> --body "..."
 ```
 
 Use `agent:blocked` instead of `agent:needs-clarification` when the intent is
-clear but the gate will not pass, and paste the actual failure output. If you got
+clear but the gate will not pass, and paste the actual failure output. In Jira
+mode the record is the same comment plus the hyphenated label
+(`agent-needs-clarification` or `agent-blocked`), with `agent-working` removed. If you got
 as far as working code, push the branch and open a **draft** pull request so the
 work is not lost. Unassign yourself either way.
 
@@ -466,6 +493,48 @@ In both cases, notify the developer out of band with `PushNotification` — a
 comment alone will not reach them on a loop that runs unattended. Then stop. Do
 not guess and merge.
 
+## Jira mode
+
+A `jira:` reference makes a Jira issue the cycle's contract. The project comes
+from `.arbor/config.json` (`roadmap.jira.project`, the key `arbor-auto-roadmap`
+and `arbor-project-scaffold` record); a `jira:<KEY-n>` whose project differs
+from it is still honoured, since the key names its own project. `jira:next`
+with no project recorded is a hard error at step 0.
+
+Use a connected Atlassian/Jira MCP server's tools when one is available,
+otherwise the `jira` CLI. **Access check:** the MCP server answers a lookup of
+the project, or `jira me` succeeds and `jira project list` includes it.
+
+| Operation               | Jira equivalent (CLI shown; MCP tools map one-to-one)                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| Lock check              | `jira issue list -q 'project = <KEY> AND labels = agent-working AND statusCategory != Done' --plain`    |
+| Eligible issues         | the query below                                                                                         |
+| Read issue and comments | `jira issue view <KEY-n> --comments 100 --plain`                                                        |
+| Claim                   | `jira issue edit <KEY-n> -l agent-working --no-input` then `jira issue assign <KEY-n> "$(jira me)"`     |
+| Comment                 | `jira issue comment add <KEY-n> "<body>"`                                                               |
+| Swap labels             | `jira issue edit <KEY-n> -l -agent-working -l agent-done --no-input` (a leading `-` removes a label)    |
+| Unassign                | `jira issue assign <KEY-n> x`                                                                           |
+| Close                   | `jira issue move <KEY-n> "<doneTransition>"`, then confirm `statusCategory = Done`                      |
+
+Eligibility — open, not an Epic, unassigned, not locked, blocked, or awaiting
+clarification — in selection order, Jira's Priority field highest first, then
+oldest:
+
+```
+project = <KEY> AND statusCategory != Done AND issuetype != Epic
+  AND assignee IS EMPTY
+  AND (labels IS EMPTY OR labels NOT IN (agent-working, agent-blocked, agent-needs-clarification))
+ORDER BY priority DESC, created ASC
+```
+
+The `labels IS EMPTY` arm is load-bearing: `NOT IN` alone silently drops every
+issue that has no labels at all. `<doneTransition>` is
+`roadmap.jira.doneTransition` from the config, default `Done`; if the workflow
+has no such transition from the issue's current status, escalate as blocked
+rather than guessing another one. The issue's description (and its acceptance
+criteria, however they are formatted there) plus every comment is the contract,
+exactly as with a GitHub issue body.
+
 ## Labels this skill relies on (issue mode)
 
 | Label                       | Meaning                                                          |
@@ -474,7 +543,12 @@ not guess and merge.
 | `agent:done`                | Shipped and merged by a cycle.                                   |
 | `agent:blocked`             | Implementation exists but the gate will not pass. Needs a human. |
 | `agent:needs-clarification` | Ambiguous intent. Questions are in the comments.                 |
+| `epic`                      | Umbrella/tracking issue. Scope reference, never built directly.  |
 | `p0` / `p1` / `p2`          | Selection priority, highest first.                               |
+
+In Jira the same labels are spelled with a hyphen (`agent-working`,
+`agent-done`, `agent-blocked`, `agent-needs-clarification`), `epic` is the Epic
+issue type rather than a label, and priority is Jira's own Priority field.
 
 `templates/` in this skill directory ships the GitHub issue and pull request
 templates that make those labels and the acceptance-criteria contract real in a
@@ -509,4 +583,5 @@ issue mode copies them into its `.github/`; see `templates/README.md`.
   on or is migrating from is ordinary and fine; framing the project as an
   alternative to something else is not.
 - One change = one work ID = one branch = one work source. Keep them in sync, and
-  never batch two issues or two roadmap items into one cycle.
+  never batch two issues or two roadmap items into one cycle, or pass both an
+  `issue:` and a `jira:` reference.

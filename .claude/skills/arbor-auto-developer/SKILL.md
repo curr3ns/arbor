@@ -1,17 +1,18 @@
 ---
 name: arbor-auto-developer
-description: Burns down a repo's work queue, one item per run. Prefers GitHub issues when the repo has them — gh authenticated, issues enabled, at least one eligible open issue — selecting the highest-priority unclaimed issue and dispatching one arbor-auto-work cycle in issue mode. Otherwise falls back to docs/roadmaps/*.md, the human-authored, files-only roadmap set arbor-auto-roadmap produces (excluding docs/roadmaps/archive/), walking roadmap files in filename order and, within the first roadmap holding an eligible item, selecting the earliest incomplete phase's first unchecked, unannotated item. One queue per cycle, exactly one arbor-auto-work subagent, autonomous by default, merged to main. Never authors queue content itself — no issues filed or re-scoped, no item text, no phases, no checkbox flips. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop. Also supports an optional foreground --goal mode — invoked with --goal, it sets a session-scoped /goal Stop hook naming one target queue (the issue tracker, optionally scoped to a label, or one named roadmap) and works that queue one item at a time, cycle after cycle, until nothing eligible remains in it — falling back to running cycles back-to-back in-session when /goal is unavailable. The scheduled default with no --goal is unaffected.
+description: Burns down a repo's work queue, one item per run. Prefers the repo's issue tracker when it has one — GitHub issues (gh authenticated, issues enabled), or the Jira project .arbor/config.json records when its roadmap destination is jira — and at least one eligible open issue, selecting the highest-priority unclaimed issue and dispatching one arbor-auto-work cycle in issue mode (issue:<n> or jira:<KEY-n>). Otherwise falls back to docs/roadmaps/*.md, the human-authored, files-only roadmap set arbor-auto-roadmap produces (excluding docs/roadmaps/archive/), walking roadmap files in filename order and, within the first roadmap holding an eligible item, selecting the earliest incomplete phase's first unchecked, unannotated item. One queue per cycle, exactly one arbor-auto-work subagent, autonomous by default, merged to main. Never authors queue content itself — no issues filed or re-scoped, no item text, no phases, no checkbox flips. Run on a schedule (~hourly — the schedule skill's cron has a 1h minimum interval); each run is a single cycle, not a loop. Also supports an optional foreground --goal mode — invoked with --goal, it sets a session-scoped /goal Stop hook naming one target queue (the issue tracker, optionally scoped to a label, or one named roadmap) and works that queue one item at a time, cycle after cycle, until nothing eligible remains in it — falling back to running cycles back-to-back in-session when /goal is unavailable. The scheduled default with no --goal is unaffected.
 license: MIT
 metadata:
   author: arbor
-  version: "2.2"
+  version: "2.3"
 ---
 
 # Arbor auto-developer agent
 
 A scheduled burn-down agent. It has two possible queues and each cycle uses
-exactly one of them. Where the repo has GitHub issues available, the queue is
-**the issue tracker**; where it does not, the queue is `docs/roadmaps/*.md` —
+exactly one of them. Where the repo has an issue tracker available — GitHub
+issues, or Jira when the repo records Jira as its roadmap destination — the
+queue is **the issue tracker**; where it does not, the queue is `docs/roadmaps/*.md` —
 the multi-phase, human-authored roadmaps `arbor-auto-roadmap` writes. Either
 way the content of that queue is the developer's, never anything this skill
 creates, seeds, or files itself. Each run is a single cycle: detect the queue,
@@ -46,8 +47,17 @@ You MUST create a todo per step and complete them in order.
 1. **Detect the queue.** Two queues exist; this cycle uses exactly one of
    them, and the issue tracker wins whenever it is available.
 
-   **Is the issue tracker available?** It is when `gh` is installed and
-   authenticated and the repo has issues enabled:
+   **Which tracker?** Read `.arbor/config.json` as it stands on `main`. If
+   `roadmap.destination` is `jira`, the tracker is the Jira project named by
+   `roadmap.jira.project`, and every tracker operation in this file — the
+   lock check, the eligibility probe, the close-out check, the blocked record
+   — runs through its Jira equivalent (see **Jira as the tracker**, below).
+   Otherwise — no file, no `roadmap` key, or any other destination — the
+   tracker is GitHub, as described next. The config picks exactly one
+   tracker; a Jira repo is never also probed for GitHub issues.
+
+   **Is the issue tracker available?** For GitHub, it is when `gh` is
+   installed and authenticated and the repo has issues enabled:
 
    ```bash
    gh auth status
@@ -56,6 +66,8 @@ You MUST create a todo per step and complete them in order.
 
    Either command failing — no `gh` on `PATH`, not authenticated, no GitHub
    remote, issues disabled on the repo — means the tracker is not available.
+   For Jira, it is available when `arbor-auto-work`'s Jira access check
+   passes (its `## Jira mode`); a failure there means the same thing.
    That is not an error and not something to fix: fall through to the roadmap
    queue below, exactly as a repo that never had issues would.
 
@@ -88,12 +100,25 @@ You MUST create a todo per step and complete them in order.
    ```
 
    An issue is **eligible** when it is open, is not a pull request, is
-   unassigned, and carries neither `agent:blocked` nor
-   `agent:needs-clarification` — the same eligibility `arbor-auto-work`'s
-   `issue:next` applies. If at least one issue is eligible, this cycle runs on
-   the **issue queue**, and the roadmap walk below is skipped entirely. If the
-   tracker is unavailable, or no issue is eligible, this cycle runs on the
-   **roadmap queue**.
+   unassigned, and carries none of `agent:blocked`,
+   `agent:needs-clarification`, or `epic` — the same eligibility
+   `arbor-auto-work`'s `issue:next` applies.
+
+   `epic` marks a developer-authored umbrella or tracking issue: it exists as
+   a scope reference for the issues carved out of it, and is never implemented
+   directly. Unlike the `agent:*` labels it is permanent and belongs to the
+   developer — a cycle never adds it, never clears it, and never treats it as
+   a block to escalate. It is simply not work, so selection passes over it in
+   silence rather than reporting anything.
+
+   In Jira, `epic` is the Epic issue type rather than a label, and the
+   `agent:*` labels are spelled `agent-*`; the eligibility query in
+   `arbor-auto-work`'s `## Jira mode` encodes all of it.
+
+   If at least one issue is eligible, this cycle runs on the **issue queue**,
+   and the roadmap walk below is skipped entirely. If the tracker is
+   unavailable, or no issue is eligible, this cycle runs on the **roadmap
+   queue**.
 
    **The roadmap queue.** Read the non-archived roadmap files
    `docs/roadmaps/*.md` as they stand on `main` — not on whatever branch
@@ -108,13 +133,23 @@ You MUST create a todo per step and complete them in order.
    not also flip a roadmap item, and a cycle that selected a roadmap item does
    not also claim an issue.
 
+   **Jira as the tracker.** `arbor-auto-work`'s `## Jira mode` is the single
+   definition of every Jira operation — its lock query, eligibility query and
+   ordering, claim, label swap, comment, unassign, and close. This skill uses
+   those as written rather than keeping a second copy. Wherever this file
+   shows a `gh` command, a Jira-tracker cycle runs that operation's Jira
+   equivalent instead; wherever it names an `agent:*` label, read the
+   `agent-*` spelling; wherever it names an issue `#<n>`, read the issue key
+   `<KEY-n>`. Nothing else about the cycle changes.
+
 2. **Select exactly one item** from the queue step 1 chose. That single item
    is the cycle's selection; never select, batch, or queue more than one, on
    either queue.
 
    **On the issue queue**, take the first eligible issue in
    `arbor-auto-work`'s own order: priority label `p0` > `p1` > `p2` >
-   unlabelled, then oldest `createdAt`. That skill's issue-mode resolution of
+   unlabelled, then oldest `createdAt` — or, in Jira, Priority highest first,
+   then oldest `created`. That skill's issue-mode resolution of
    `issue:next` is the single definition of this ordering; follow it rather
    than maintaining a second copy, and treat it as the authority if the two
    ever read differently. Hold the issue's number, title, and body for the
@@ -161,9 +196,9 @@ You MUST create a todo per step and complete them in order.
 
    - Another cycle holds the `agent:working` lock (step 1).
    - The issue tracker is available but no open issue is eligible (every one
-     is closed, assigned, or labelled `agent:blocked` or
-     `agent:needs-clarification`) **and** the roadmap queue then yields
-     nothing either.
+     is closed, assigned, or labelled `agent:blocked`,
+     `agent:needs-clarification`, or `epic`) **and** the roadmap queue then
+     yields nothing either.
    - No eligible item exists in any non-archived roadmap (every roadmap is
      fully checked, or every unchecked item — in the file, or specifically in
      its earliest incomplete phase — carries a blocked annotation).
@@ -191,6 +226,9 @@ You MUST create a todo per step and complete them in order.
    ```bash
    gh issue view <n> --json state,labels
    ```
+
+   In Jira, confirm the issue's status category is Done and it carries
+   `agent-done` rather than `agent-working`.
 
    An issue still open, or still labelled `agent:working`, after a merge that
    demonstrably landed is an upstream bug in the work cycle: report it in the
@@ -248,6 +286,9 @@ You MUST create a todo per step and complete them in order.
      --remove-label "agent:working" --remove-assignee @me
    gh issue comment <n> --body "<what broke, and at which gate step>"
    ```
+
+   In Jira: add `agent-blocked`, remove `agent-working`, unassign, and
+   comment, using `## Jira mode`'s commands.
 
    Read the issue's current labels first. `arbor-auto-work`'s own escalation
    path writes exactly this record when it escalates, and it may have written
@@ -332,13 +373,16 @@ matches it.
 
 **Issue queue**, unscoped:
 
-> No open issue in this repository is eligible — every open issue is closed, assigned, or labelled `agent:blocked` or `agent:needs-clarification`
+> No open issue in this repository is eligible — every open issue is closed, assigned, or labelled `agent:blocked`, `agent:needs-clarification`, or `epic`
 
 **Issue queue**, scoped to a label:
 
-> No open issue labelled `<x>` in this repository is eligible — every such issue is closed, assigned, or labelled `agent:blocked` or `agent:needs-clarification`
+> No open issue labelled `<x>` in this repository is eligible — every such issue is closed, assigned, or labelled `agent:blocked`, `agent:needs-clarification`, or `epic`
 
-with `<x>` replaced by the actual label.
+with `<x>` replaced by the actual label. On a Jira tracker, write the
+conditions with Jira's terms — "every open issue in Jira project `<KEY>` that
+is not an Epic is done, assigned, or labelled `agent-blocked` or
+`agent-needs-clarification`" — with `<KEY>` replaced by the actual project.
 
 **Roadmap queue:**
 
@@ -381,8 +425,11 @@ the queue:
   `docs/roadmaps/<slug>.md` path matching a non-archived roadmap file. That
   roadmap is the target, on the roadmap queue, whether or not the issue
   tracker is available.
-- **A label** — any other argument matching an existing GitHub label on this
-  repo (for example `p0`). The target is the issue queue, scoped to issues
+- **A label** — any other argument matching an existing label on the
+  tracker: a GitHub label on this repo (for example `p0`), or, on a Jira
+  tracker, a label carried by at least one issue in the project (for example
+  `roadmap-checkout`, which `arbor-auto-roadmap` puts on every item it
+  files). The target is the issue queue, scoped to issues
   carrying that label; every eligibility rule from `## The cycle` step 1
   still applies on top of the scope.
 - **Neither** — an argument matching no non-archived roadmap and no existing
@@ -453,8 +500,9 @@ still runs every cycle on the issue queue, and a lock held by another cycle
 ends the run on the quiet path exactly as it would a scheduled cycle.
 
 Where the pin carries a label scope, every cycle's selection is restricted
-to issues carrying that label — `gh issue list --state open --label "<x>"` —
-and the ordering within that subset is unchanged. An eligible issue outside
+to issues carrying that label — `gh issue list --state open --label "<x>"`,
+or `AND labels = "<x>"` added to the Jira eligibility query — and the ordering
+within that subset is unchanged. An eligible issue outside
 the scope is not this run's to work, however long it has been waiting.
 
 Under `/goal`, the repetition belongs to the **hook**, not to this skill's
@@ -480,7 +528,7 @@ condition: **no eligible item remains in the target queue**. On the roadmap
 queue that means the roadmap is finished and archived, or every unchecked
 item left in it carries a `<!-- blocked: ... -->` annotation. On the issue
 queue it means every open issue in scope is closed, assigned, or labelled
-`agent:blocked` or `agent:needs-clarification`. An all-blocked queue is a
+`agent:blocked`, `agent:needs-clarification`, or `epic`. An all-blocked queue is a
 **terminating state, not a retry state**: the goal run does not re-attempt
 blocked items to keep itself going, and it does not invent a triage pass
 over them — `## The cycle` step 6's rule that blocked items wait for a
@@ -577,16 +625,18 @@ pointer back to the queue.
 
 **On the issue queue**, the prompt carries:
 
-- The issue's **number and title**, and its **body verbatim**.
-- The reference `issue:<n>`, exactly as `arbor-auto-work` documents it, so
+- The issue's **number and title**, and its **body verbatim** — for Jira, its
+  key, summary, and description.
+- The reference `issue:<n>` — or `jira:<KEY-n>` on a Jira tracker — exactly
+  as `arbor-auto-work` documents it, so
   it claims the issue, reads it in full including its comments, posts the
   intent contract as a comment before writing code, verifies the diff
   against it, and closes the issue out on merge.
 - An instruction to run the `arbor-auto-work` skill in **autonomous mode —
   its default: no `--interaction`, no `--pr`.**
 
-Pass `issue:<n>`, the number this cycle already resolved in step 2 — never
-`issue:next`, which would let the subagent select a different issue from the
+Pass `issue:<n>` (or `jira:<KEY-n>`), the one this cycle already resolved in
+step 2 — never `issue:next` or `jira:next`, which would let the subagent select a different issue from the
 one this cycle checked, will notify about, and is prepared to block.
 
 **On the roadmap queue**, the prompt carries:
@@ -638,7 +688,8 @@ what's actionable — on exactly these three events, and no others:
 - **Roadmap complete** — the item just merged was the last unchecked item in
   its file. **Roadmap queue only**: an emptied issue tracker fires nothing.
 
-Name the item the way its queue does — `#<n>` for an issue, the roadmap slug
+Name the item the way its queue does — `#<n>` for a GitHub issue, the key
+(`SHOP-42`) for a Jira issue, the roadmap slug
 and `R<n>` for a roadmap item — so the line identifies the work without a
 lookup.
 
@@ -698,11 +749,13 @@ delivered.
 - **One queue per cycle.** Detection picks the issue tracker or the roadmap
   files, and everything downstream — selection, dispatch, close-out
   observation, blocked bookkeeping — stays on that one queue. Never dispatch
-  a cycle carrying both an `issue:` and a `roadmap:` reference, and never
+  a cycle carrying both a tracker reference (`issue:` or `jira:`) and a
+  `roadmap:` reference, and never
   record a block on the queue the item did not come from.
 - **Repo-scoped, maintainer identity only.** Only ever touch branches,
-  roadmap files, and issues in this repo, under the maintainer's own
-  identity — no cross-repo activity.
+  roadmap files, and issues in this repo — or, on a Jira tracker, in the one
+  Jira project its config names — under the maintainer's own identity — no
+  cross-repo activity.
 - **Never author or re-scope issues.** Never open an issue — least of all to
   give yourself something to do on an idle tick — never edit an issue's
   title or body, never re-label one for priority, and never close one. The

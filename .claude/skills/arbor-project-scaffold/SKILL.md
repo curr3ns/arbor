@@ -1,10 +1,10 @@
 ---
 name: arbor-project-scaffold
-description: Use when starting a brand-new project — an empty or nearly-empty directory that needs to become a working repo. Interrogates the user, then scaffolds structure, testing, Docker profiles, an optional local reverse proxy, the docs/roadmaps/ layout the rest of the loop reads, quality rules, the gate, VCS, and CI/CD, and hands off to arbor-auto-roadmap for planning. Stack-agnostic.
+description: Use when starting a brand-new project — an empty or nearly-empty directory that needs to become a working repo. Interrogates the user, then scaffolds structure, testing, Docker profiles, an optional local reverse proxy, the work queue the rest of the loop reads (docs/roadmaps/ files, GitHub issues, or Jira, recorded in .arbor/config.json), quality rules, the gate, VCS, and CI/CD, and hands off to arbor-auto-roadmap for planning. Stack-agnostic.
 license: MIT
 metadata:
   author: arbor
-  version: "1.3"
+  version: "1.4"
 ---
 
 # Arbor scaffold
@@ -16,7 +16,7 @@ a reverse proxy is available, VCS and CI/CD wiring, and
 quality rules for both agents and humans. Stack-agnostic: interrogate first,
 derive specifics per stack.
 
-**Generate nothing until the recap in step 8 is approved.** Interrogation uses
+**Generate nothing until the recap in step 9 is approved.** Interrogation uses
 one topic per question (AskUserQuestion where multiple-choice fits) and
 continues until you are confident the plan satisfies every requirement.
 
@@ -82,32 +82,52 @@ You MUST create a todo per step and complete them in order.
    the gate — nothing bespoke. Confirm whether it should be the required
    check behind the branch protection from step 6. "No CI/CD" is a valid
    answer; it must be chosen, not assumed.
-8. **Recap.** Restate every decision — stack, name, packages, ports, testing,
-   VCS, CI/CD, what Docker runs — and get an explicit go before touching any
-   file.
+8. **Work queue.** Ask where planned work will live — the destination
+   `arbor-auto-roadmap` files roadmaps to and `arbor-auto-developer` burns
+   down — with `AskUserQuestion`:
+
+   - **Roadmap files in docs/roadmaps/ (Recommended)** — Markdown checklists
+     in the repo; works with any host, or none.
+   - **GitHub issues** — an epic issue plus one issue per item, worked in
+     issue mode. Offer it only when step 6 chose GitHub.
+   - **Jira** — an Epic plus one issue per item in a Jira project, worked in
+     Jira mode. Follow up for the project key, the issue type items use
+     (default `Story`), and the workflow transition that closes an issue
+     (default `Done`).
+
+   Check the choice is usable now, before the recap: for GitHub, `gh auth
+   status` succeeds (the remote itself is created in step 17); for Jira, a
+   connected Atlassian/Jira MCP server can look up the project, or `jira me`
+   succeeds and `jira project list` includes the key. If the check fails,
+   say what is missing and ask whether to fix it or pick another
+   destination — never switch silently. The existing Jira project is the
+   user's; this skill never creates one.
+9. **Recap.** Restate every decision — stack, name, packages, ports, testing,
+   VCS, CI/CD, work queue, what Docker runs — and get an explicit go before
+   touching any file.
 
 ### Phase 2 — Generate
 
-9. **Scaffold** in the current directory: workspace manifest, the agreed
-   packages, and minimal source that compiles, runs, and has at least one
-   test per package proving the wiring — a health check, a smoke test, a
-   hello-world route — never coverage fillers, and never a real feature.
-   Anything resembling product/business logic belongs to the first
-   `/arbor-auto-work` cycle, not the scaffold.
-10. **Docker.** One `docker-compose.yml` at the root with host ports as
+10. **Scaffold** in the current directory: workspace manifest, the agreed
+    packages, and minimal source that compiles, runs, and has at least one
+    test per package proving the wiring — a health check, a smoke test, a
+    hello-world route — never coverage fillers, and never a real feature.
+    Anything resembling product/business logic belongs to the first
+    `/arbor-auto-work` cycle, not the scaffold.
+11. **Docker.** One `docker-compose.yml` at the root with host ports as
     `${VAR:-default}` and per-profile env files (local vs e2e/agent) wired to
     the claimed block. Healthchecks on every service. Stack scripts:
     `stack:up`/`stack:down` and `stack:e2e:up`/`stack:e2e:down` (or the
     stack's equivalent). If the app can't be fully containerized,
     containerize at least its dependencies (db, brokers) and document what
     runs on the host.
-11. **Reverse proxy.** Only if one is available: `nginx -v` succeeds and an
+12. **Reverse proxy.** Only if one is available: `nginx -v` succeeds and an
     infrastructure root is discoverable and writable without `sudo`. Find it
     by reading the `include` lines in `nginx.conf` and taking the directory
     they glob over, resolving symlinks; `~/Infrastructure/nginx` is the usual
     answer, with `/opt/homebrew/etc/nginx` and `/etc/nginx` as fallbacks on
     an unconfigured machine. If either check fails, skip the whole step and
-    say so in the step 19 hand-off; the project is fully usable on raw ports,
+    say so in the step 20 hand-off; the project is fully usable on raw ports,
     so a missing proxy is a skipped convenience, never a failure.
 
     The root is organised project-first, one directory per project holding
@@ -189,73 +209,104 @@ You MUST create a todo per step and complete them in order.
     HTTP status — `502` included, when the stack isn't up — proves nginx is
     answering for that name. Never invoke `sudo`, never edit `/etc/hosts`,
     and never generate a certificate — those are the user's to run.
-12. **Roadmaps.** Create `docs/roadmaps/` and `docs/roadmaps/archive/`, each
-    holding a `.gitkeep` so both survive the initial commit while empty. This
-    is the layout the rest of the loop expects: `arbor-auto-roadmap` writes
-    plans to `docs/roadmaps/<slug>.md`, `arbor-auto-developer` reads that
-    directory as its work queue wherever the repo has no GitHub issues to
-    work instead, and `arbor-auto-work` migrates a roadmap into `archive/`
-    once its last item is checked. Create the directories only — never
-    author a roadmap file, a phase, or an item here. What the project
-    should build is the user's to plan, and scaffolding a placeholder roadmap
-    would put words in their mouth.
-13. **Quality rules.** `CLAUDE.md` golden rules: agents use the e2e profile
-    only (name the ports, and the `<sub>.e2e.<name>.local` URLs when step 11
+13. **Work queue.** Record step 8's decision in `.arbor/config.json`, the
+    file `arbor-auto-roadmap`, `arbor-auto-developer`, and `arbor-auto-work`
+    all read, so none of them asks again:
+
+    ```json
+    { "roadmap": { "destination": "files" } }
+    ```
+
+    `destination` is `files`, `github`, or `jira`; for `jira` add
+    `"jira": { "project": "<KEY>", "itemType": "Story", "doneTransition": "Done" }`
+    beside it, with the values step 8 confirmed.
+
+    Whatever the destination, create `docs/roadmaps/` and
+    `docs/roadmaps/archive/`, each holding a `.gitkeep` so both survive the
+    initial commit while empty. On `files` it is the queue itself:
+    `arbor-auto-roadmap` writes plans to `docs/roadmaps/<slug>.md`,
+    `arbor-auto-developer` works them, and `arbor-auto-work` migrates a
+    roadmap into `archive/` once its last item is checked. On a tracker it
+    is the fallback `arbor-auto-developer` reads whenever the tracker is
+    unreachable or holds nothing eligible.
+
+    On `github`, also copy the `templates/github/` directory that ships with
+    the `arbor-auto-work` skill into `.github/` (issue templates plus the
+    pull request template; see that directory's `README.md`) and adjust its
+    placeholders — the example packages in `feature.yml`, the gate command
+    in the pull request template — to this project. The labels need the
+    remote, so step 17 creates them. On `jira`, nothing is written to Jira:
+    labels there are created on first use.
+
+    Never author a roadmap file, a phase, an item, or an issue here. What the
+    project should build is the user's to plan, and scaffolding a placeholder
+    roadmap would put words in their mouth.
+14. **Quality rules.** `CLAUDE.md` golden rules: agents use the e2e profile
+    only (name the ports, and the `<sub>.e2e.<name>.local` URLs when step 12
     created them); all non-trivial work goes through
     `/arbor-auto-work`; the gate is real — name the command; CI/CD runs the
     same gate on every push/PR (name the pipeline, or note there isn't one);
-    honor the conventions. Plus a commands table. `docs/CONVENTIONS.md`:
+    planned work lives in the step 8 work queue (name it — the roadmap
+    directory, GitHub issues, or the Jira project key); honor the
+    conventions. Plus a commands table. `docs/CONVENTIONS.md`:
     narrow drill-down directories, concise self-documenting files, reuse over
     duplication, extension over redefinition, simplest solution, tests beside
     source, file/migration naming, and the coverage exclusion policy.
-14. **Gate.** A single command (`gate` script or stack equivalent) chaining
+15. **Gate.** A single command (`gate` script or stack equivalent) chaining
     lint, typecheck (or stack analog), the migration name-check when one
     exists, coverage-gated tests, build, and e2e-in-Docker (bring the e2e
     stack up, run, tear down). This is the command `/arbor-auto-work` step 6
-    will run, and the command CI/CD calls in step 15.
-15. **CI/CD.** If step 7 confirmed a pipeline, generate its config
+    will run, and the command CI/CD calls in step 16.
+16. **CI/CD.** If step 7 confirmed a pipeline, generate its config
     (`.github/workflows/gate.yml`, `.gitlab-ci.yml`, or the chosen host's
     equivalent): triggers on push and PR to the default branch, checks out
     the repo, installs dependencies, then runs the exact gate command from
-    step 14 — no duplicated or bespoke steps. Skip this step only if the user
+    step 15 — no duplicated or bespoke steps. Skip this step only if the user
     explicitly declined CI/CD in step 7; the recap record notes the decision
     either way.
-16. **VCS.** `git init` (skip if already a repo); `.gitignore` covering IDE
+17. **VCS.** `git init` (skip if already a repo); `.gitignore` covering IDE
     files (`.idea/`, `*.iml`, `.vscode/`), OS noise (`.DS_Store`), local env
     files, dependencies, and build/coverage output. If step 6 asked for a
     remote, create it now with the host's CLI (`gh repo create`,
     `glab repo create`, …) at the agreed visibility and default branch name —
     if the CLI is missing or unauthenticated, stop and tell the user rather
     than silently skipping. Apply the branch protection requested in step 6
-    once both the remote and the CI/CD check from step 15 exist.
+    once both the remote and the CI/CD check from step 16 exist. If step 8
+    chose GitHub issues, create the label set from the `arbor-auto-work`
+    templates `README.md` once the remote exists — the `agent:*` lock and
+    status labels, `p0`/`p1`/`p2`, and `epic` — skipping any that already
+    exist.
 
 ### Phase 3 — Verify and record
 
-17. **Run the gate end-to-end.** It MUST pass on the fresh scaffold. Fix
+18. **Run the gate end-to-end.** It MUST pass on the fresh scaffold. Fix
     until it does; do not proceed otherwise.
-18. **Record the bootstrap.** Commit everything with subject
+19. **Record the bootstrap.** Commit everything with subject
     `INFRA-1 scaffold <name>`, and a body noting what was scaffolded and that
     the scaffold was bootstrapped by hand because the `/arbor-auto-work` cycle
-    it sets up did not yet exist. Push to the remote if step 16 created one —
-    this is the commit the CI/CD pipeline from step 15 should turn green on.
-19. **Hand off to planning.** Close by naming `arbor-auto-roadmap` as the
+    it sets up did not yet exist. Push to the remote if step 17 created one —
+    this is the commit the CI/CD pipeline from step 16 should turn green on.
+20. **Hand off to planning.** Close by naming `arbor-auto-roadmap` as the
     natural next step: the scaffold is a working repo with no plan in it, and
-    that skill is what interrogates the user into one, writing it to the
-    `docs/roadmaps/` directory step 12 created. From there
-    `arbor-auto-developer` burns that roadmap down one item at a time —
-    unless the repo has GitHub issues to work, which it takes first. Name it
-    and stop — do not invoke it, and do not start planning here; it is
+    that skill is what interrogates the user into one, filing it to the work
+    queue recorded in step 13 without asking for the destination again. From
+    there `arbor-auto-developer` burns it down one item at a time — GitHub
+    issues or Jira issues when a tracker was chosen, the `docs/roadmaps/`
+    files otherwise. Name it and stop — do not invoke it, and do not start planning here; it is
     human-invoked, and this skill's job is finished.
 
 ## Guardrails
 
-- No generated files before the step 8 go — interrogation first, always. The
+- No generated files before the step 9 go — interrogation first, always. The
   user's opening message never counts as recap approval.
 - Scaffolding only, no features. Minimal source proves the stack is wired —
   it doesn't implement product behavior. "Just this one small thing to prove
   it works" is still out of scope; a health check or smoke test already
   proves the wiring. The first feature is the first `/arbor-auto-work` cycle,
   never something built by hand during scaffolding.
+- The work queue is interrogated, never assumed, and the scaffold never
+  files work into it — no issue, no Epic, no roadmap. It creates only the
+  config, directories, templates, and labels the queue needs.
 - VCS and CI/CD are interrogated, never assumed. A "local-only" or "no
   CI/CD" answer is fine, but it must be an explicit answer the user gave, not
   a default the agent picked to save a question.
