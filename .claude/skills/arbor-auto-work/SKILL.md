@@ -510,7 +510,7 @@ the project, or `jira me` succeeds and `jira project list` includes it.
 | Lock check              | `jira issue list -q 'project = <KEY> AND labels = agent-working AND statusCategory != Done' --plain`    |
 | Eligible issues         | the query below                                                                                         |
 | Read issue and comments | `jira issue view <KEY-n> --comments 100 --plain`                                                        |
-| Claim                   | `jira issue edit <KEY-n> -l agent-working --no-input` then `jira issue assign <KEY-n> "$(jira me)"`     |
+| Claim                   | `jira issue edit <KEY-n> -l agent-working --no-input`, `jira issue assign <KEY-n> "$(jira me)"`, then `jira issue move <KEY-n> "<startTransition>"` and confirm `statusCategory = In Progress` |
 | Comment                 | `jira issue comment add <KEY-n> "<body>"`                                                               |
 | Swap labels             | `jira issue edit <KEY-n> -l -agent-working -l agent-done --no-input` (a leading `-` removes a label)    |
 | Unassign                | `jira issue assign <KEY-n> x`                                                                           |
@@ -528,10 +528,15 @@ ORDER BY priority DESC, created ASC
 ```
 
 The `labels IS EMPTY` arm is load-bearing: `NOT IN` alone silently drops every
-issue that has no labels at all. `<doneTransition>` is
-`roadmap.jira.doneTransition` from the config, default `Done`; if the workflow
-has no such transition from the issue's current status, escalate as blocked
-rather than guessing another one. The issue's description (and its acceptance
+issue that has no labels at all.
+
+`<startTransition>` is `roadmap.jira.startTransition` from the config, default
+`In Progress`. It is part of the claim: a claimed issue must show as in
+progress on the board, not sit in To Do with a label on it. Skip the move only
+when the issue's `statusCategory` is already In Progress. `<doneTransition>` is
+`roadmap.jira.doneTransition` from the config, default `Done`. If the workflow
+has no such transition from the issue's current status — either one — escalate
+as blocked rather than guessing another one. The issue's description (and its acceptance
 criteria, however they are formatted there) plus every comment is the contract,
 exactly as with a GitHub issue body.
 

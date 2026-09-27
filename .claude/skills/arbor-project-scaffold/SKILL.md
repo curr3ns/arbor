@@ -92,8 +92,8 @@ You MUST create a todo per step and complete them in order.
      issue mode. Offer it only when step 6 chose GitHub.
    - **Jira** — an Epic plus one issue per item in a Jira project, worked in
      Jira mode. Follow up for the project key, the issue type items use
-     (default `Story`), and the workflow transition that closes an issue
-     (default `Done`).
+     (default `Story`), the workflow transition that starts an issue
+     (default `In Progress`), and the one that closes it (default `Done`).
 
    Check the choice is usable now, before the recap: for GitHub, `gh auth
    status` succeeds (the remote itself is created in step 17); for Jira, a
@@ -218,7 +218,7 @@ You MUST create a todo per step and complete them in order.
     ```
 
     `destination` is `files`, `github`, or `jira`; for `jira` add
-    `"jira": { "project": "<KEY>", "itemType": "Story", "doneTransition": "Done" }`
+    `"jira": { "project": "<KEY>", "itemType": "Story", "startTransition": "In Progress", "doneTransition": "Done" }`
     beside it, with the values step 8 confirmed.
 
     Whatever the destination, create `docs/roadmaps/` and

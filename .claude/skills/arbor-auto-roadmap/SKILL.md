@@ -47,8 +47,10 @@ code so every contributor and every later run files to the same place:
 
 `destination` is `files`, `github`, or `jira`. The `jira` destination also
 carries `"jira": { "project": "<KEY>", "itemType": "Story" }` beside it
-(`itemType` defaults to `Story`; an optional `doneTransition`, default `Done`,
-names the workflow transition `arbor-auto-work` closes an issue with).
+(`itemType` defaults to `Story`; an optional `startTransition`, default
+`In Progress`, names the workflow transition `arbor-auto-work` moves an issue
+through when it claims it, and an optional `doneTransition`, default `Done`,
+the one it closes an issue with).
 `arbor-auto-developer` reads this record to decide which issue tracker it
 works, and `arbor-auto-work` reads the project key for `jira:next`. Other top-level keys in the file belong to
 other tools — read and rewrite only `roadmap`.
