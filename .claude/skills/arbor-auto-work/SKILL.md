@@ -1,10 +1,10 @@
 ---
 name: arbor-auto-work
-description: Run the mandatory agentic work cycle for a slice of work — take the intent, assign a work ID, branch, plan the slice into acceptance criteria and tasks, implement it, gate on the project's verification command, verify the diff against the intent, commit, push, and integrate. Use when starting or completing any non-trivial change. Each phase runs as a subagent under a per-phase model (defaults plan=opus, work=sonnet, gate=haiku), overridable with plan:/work:/gate: tokens, plus its own review: token for the intent gate, an optional roadmap: item reference this cycle closes out on commit, an optional issue: reference (a number, or issue:next to select one) making a GitHub issue the cycle's contract — claimed, verified against, and closed on merge — and an optional jira: reference (an issue key, or jira:next to select one from the project recorded in .arbor/config.json) doing the same for a Jira issue. Defaults to autonomous; pass --interaction to run with approval prompts, or --pr to run autonomously but open a pull request instead of merging.
+description: Run the mandatory agentic work cycle for a slice of work — take the intent, assign a work ID, branch, plan the slice into acceptance criteria and tasks, implement it, gate on the project's verification command, verify the diff against the intent, commit, push, and integrate. Use when starting or completing any non-trivial change. Each phase runs as a subagent under a per-phase model (defaults plan=opus, work=sonnet, gate=haiku), overridable with plan:/work:/gate: tokens, plus its own review: token for the intent gate, an optional roadmap: item reference this cycle closes out on commit, an optional issue: reference (a number, or issue:next to select one) making a GitHub issue the cycle's contract — claimed, verified against, and closed on merge — and an optional jira: reference (an issue key, or jira:next to select one from the project recorded in .arbor/config.json) doing the same for a Jira issue. Defaults to autonomous; pass --interaction to run with approval prompts, or --pr to run autonomously but open a pull request instead of merging. Pass --parallel (or --parallel=<n>, cap 1–8, default 4) to fan out agents inside each phase — codebase scouts, implementation waves in separate git worktrees, parallel gate fixes, and parallel intent reviewers — for a faster cycle at a higher token cost, with a scout: model token for the scouts (default haiku).
 license: MIT
 metadata:
   author: arbor
-  version: "3.2"
+  version: "3.3"
 ---
 
 # Arbor work cycle
@@ -17,6 +17,10 @@ implement, gate, intent gate, commit, push, integrate. Two modes:
   instead of merging — still no prompts.
 - **interactive** (`--interaction`): ask for approval before implementing and
   before integrating; open a pull request at the end instead of merging.
+
+Either mode can add `--parallel`, which fans agents out inside each phase to
+cut wall-clock time without changing what the cycle ships. See
+`## Parallel mode`.
 
 The work is **implemented directly**. There is no proposal-then-apply ceremony
 and no spec artifacts to author or archive — the plan in step 4 lives in the
@@ -53,7 +57,9 @@ hand back the whole decision.
 A short description of the slice of work, and optionally the type (`DEV` for
 development — the default — or `INFRA` for infrastructure), mode (`--interaction`
 or `--pr`), per-phase model tokens (`plan:`/`work:`/`gate:`, bare or behind
-`--models`), a `review:` model for the intent gate, a roadmap item reference
+`--models`), a `review:` model for the intent gate, `--parallel` or
+`--parallel=<n>` with a `scout:` model for its scouts (see `## Parallel mode`),
+a roadmap item reference
 (`roadmap:docs/roadmaps/<slug>.md#R<n>`, the format `arbor-auto-roadmap` defines)
 naming the roadmap item this cycle is building, an issue reference
 (`issue:<n>`, or `issue:next` to select one) naming the GitHub issue this cycle
@@ -79,9 +85,12 @@ does not override it:
 | `work:`   | implement the slice (step 5)              | **sonnet** |
 | `gate:`   | run the project's verification command    | **haiku**  |
 | `review:` | the intent gate (step 7)                  | **opus**   |
+| `scout:`  | codebase scouts (`--parallel` only)       | **haiku**  |
 
 `review:` defaults to opus because the intent gate is the judgement call that
-replaces human review.
+replaces human review. `scout:` defaults to haiku because scouts only locate
+and summarize code; the plan model still does the planning. Without
+`--parallel`, a `scout:` token is accepted and ignored.
 
 **Syntax.** Bare tokens (primary) or a `--models` list — both parse identically:
 
@@ -92,11 +101,13 @@ replaces human review.
 
 **Parsing.**
 
-- A token matching `^(plan|work|gate|review):(opus|sonnet|haiku|fable)$` — or a
+- A token matching `^(plan|work|gate|review|scout):(opus|sonnet|haiku|fable)$` — or a
   comma-separated list of them behind `--models` — is a model assignment and is
   removed from the input.
-- After removing model tokens, the `--interaction`/`--pr` flags, and any
-  `roadmap:`/`issue:`/`jira:` token, whatever remains is the work description.
+- `--parallel` or `--parallel=<n>` sets the concurrency cap (default 4). `<n>`
+  must be an integer from 1 to 8; anything else is a hard error.
+- After removing model tokens, the `--interaction`/`--pr`/`--parallel` flags,
+  and any `roadmap:`/`issue:`/`jira:` token, whatever remains is the work description.
 - An **unknown phase key or model name** (e.g. `wrok:sonnet`, `plan:opua`) is a
   hard error: **stop and report** it. Never silently ignore a mistyped override
   or fall back to a default in its place.
@@ -105,7 +116,9 @@ replaces human review.
 Dispatch every phase **synchronously** (`run_in_background: false`) — each phase
 depends on the previous one's output and file changes. Subagents share this
 working directory, so the implementation phase sees the plan's context and the
-gate sees the implementation's edits.
+gate sees the implementation's edits. Under `--parallel`, each phase still
+completes before the next begins, but a phase may fan out concurrent agents as
+`## Parallel mode` describes.
 
 ## Work sources
 
@@ -135,12 +148,14 @@ intent contract before code, close out only after the merge — is unchanged.
 You MUST create a todo per step and complete them in order.
 
 0. **Split off model, roadmap, and tracker tokens.** Set aside any
-   `plan:`/`work:`/`gate:`/`review:` tokens (bare or behind `--models`), the
-   `--interaction`/`--pr` flags, any `roadmap:` token, and any `issue:` or
-   `jira:` token.
-   Reject an unknown phase key or model name with a hard error — stop and report,
-   before any branch is created or any issue is claimed. Fill unspecified phases
-   with their defaults (plan=opus, work=sonnet, gate=haiku, review=opus) and hold
+   `plan:`/`work:`/`gate:`/`review:`/`scout:` tokens (bare or behind
+   `--models`), the `--interaction`/`--pr`/`--parallel` flags, any `roadmap:`
+   token, and any `issue:` or `jira:` token.
+   Reject an unknown phase key or model name, or a `--parallel=<n>` outside
+   1–8, with a hard error — stop and report, before any branch is created or any
+   issue is claimed. Fill unspecified phases with their defaults (plan=opus,
+   work=sonnet, gate=haiku, review=opus, scout=haiku), hold the resolved
+   concurrency cap when `--parallel` was passed, and hold
    the resolved model map for the dispatches below. What remains is the work
    description used everywhere below. Keeping all of them out now ensures none
    leaks into the work-ID slug in steps 2–3.
@@ -267,6 +282,9 @@ You MUST create a todo per step and complete them in order.
 
    Hold the returned plan; every later step refers back to it.
 
+   With `--parallel`, scouts run first and the plan also carries a task graph in
+   waves — see `### Plan` under `## Parallel mode`.
+
 5. **Implement (work model).** If `--interaction`, summarize the plan and ask for
    approval before dispatching. Then dispatch a subagent with `model` = the
    **work** model, carrying the full plan from step 4 verbatim and the **Code
@@ -293,6 +311,10 @@ You MUST create a todo per step and complete them in order.
    a genuine blocker — an ambiguous task, an error it cannot clear — it reports
    that back instead of a clean completion; treat that as a real problem and stop
    rather than continuing to the gate.
+
+   With `--parallel`, the plan's waves are implemented by concurrent agents in
+   separate worktrees — see `### Implement` under `## Parallel mode`. A plan
+   with a single task runs this step exactly as written.
 
 6. **Run the gate (gate model).** If the project defines a verification command —
    an `npm run gate` / test / lint / build script, or a gate documented in the
@@ -334,6 +356,9 @@ You MUST create a todo per step and complete them in order.
    A genuine gate failure stops the cycle here; do not continue to the intent
    gate or the commit on a red gate.
 
+   With `--parallel`, the gate run is unchanged, but fixes for failures in
+   separate tasks run concurrently — see `### Gates` under `## Parallel mode`.
+
 7. **The intent gate.** Dispatch a **fresh subagent** that did not do the
    implementation, under the `review:` model (default opus). Give it exactly two
    things: the work source's contract — the issue body plus the intent-contract
@@ -355,6 +380,9 @@ You MUST create a todo per step and complete them in order.
    Hold the verdict table: step 10 puts it in the pull request body or the
    closing comment.
 
+   With `--parallel`, the criteria are split across concurrent reviewers plus
+   one scope reviewer — see `### Gates` under `## Parallel mode`.
+
 8. **Commit.** If a valid `roadmap:` reference was supplied, flip the item
    before authoring the commit — reaching this step is itself the
    precondition, since a genuine gate failure already stopped the cycle at
@@ -369,6 +397,10 @@ You MUST create a todo per step and complete them in order.
    leave the file at `docs/roadmaps/<slug>.md`. Stage the flip and any move
    into the same commit as the work, on the same branch — no separate
    bookkeeping commit or push.
+
+   With `--parallel`, first fold the wave checkpoint commits back into the
+   working changes with `git reset --soft <branch-point>` (the commit the branch
+   was created from), so the cycle still lands as a single commit.
 
    Commit with a subject `{ticket} {short description}` (uppercase work ID,
    e.g. `DEV-4 add cart`), optionally followed by a blank line and `-` bullets
@@ -540,6 +572,136 @@ as blocked rather than guessing another one. The issue's description (and its ac
 criteria, however they are formatted there) plus every comment is the contract,
 exactly as with a GitHub issue body.
 
+## Parallel mode
+
+`--parallel` cuts the wall-clock time of one cycle by fanning agents out inside
+steps 4–7 wherever the work splits. It changes nothing the cycle ships: both
+gates still pass on the merged result, and the cycle is still one work ID, one
+branch, one work source, and one commit. Steps 0–3 and 8–10 run as written. It
+composes with every other flag and reference.
+
+It trades tokens for time — scouts, parallel reviewers, and per-worktree
+dependency installs all cost more than the sequential cycle.
+
+**Mechanics.** The session running this skill is the **orchestrator**: it
+dispatches, validates, merges, and combines results, and never implements.
+Agents that run concurrently are dispatched **in a single message**, and all of
+them are awaited before moving on. The concurrency cap bounds every fan-out; a
+larger fan-out runs in batches of at most the cap.
+
+### Plan
+
+**Scouts** (`scout:` model, concurrent). From the step 1 contract and a cheap
+map of the repo — `git ls-files` grouped by top-level directory, plus
+`CLAUDE.md` and `docs/CONVENTIONS.md` if present — pick up to *cap* areas worth
+reading: the packages or directories the contract touches, and where their
+tests live. A narrow slice or a small repo gets one scout. Each scout reads only
+its area, **writes nothing**, and returns at most ~400 words:
+
+- the relevant files, by path;
+- key types and signatures, and existing patterns to reuse;
+- where the area's tests live, and the command that runs only them;
+- shared plumbing it saw — registries, barrel or index files, routing tables,
+  config, `package.json`, lockfiles.
+
+**Planner** (`plan:` model). Dispatch step 4 as written, adding every scout
+summary to its inputs; it may still read files to fill gaps. Besides the usual
+plan it returns a **task graph**, still as session state:
+
+```
+T1  <what to do>
+    owns:     src/cart/cart.ts, src/cart/cart.test.ts
+    serves:   AC1, AC3
+    test:     npm test -- src/cart
+    after:    —
+T2  ...
+    after:    T1
+Waves: W1 = {T1, T3}  W2 = {T2}  W3 = {T4 (integration)}
+```
+
+**Validation.** The orchestrator checks the graph:
+
+1. **Disjoint ownership** — no file is owned by two tasks in the same wave.
+2. **Backward dependencies** — `after:` only names tasks in earlier waves.
+3. **Serialized plumbing** — edits to shared wiring (registries, index files,
+   routes) belong to one **integration task** in the final wave; dependency
+   installs and lockfile changes belong to one task in **W1**.
+4. **Coverage** — every acceptance criterion is served by at least one task.
+
+On a violation, send the violations back to the planner **once**. If the
+corrected graph still fails, fall back to sequential step 5 with the plan as an
+ordinary task list. Never guess at a partition. A graph of one wave holding one
+task also runs sequential step 5; log `parallel: no independent tasks`.
+
+### Implement
+
+If `--interaction`, show the plan with its waves and get approval before the
+first wave. Then, per wave:
+
+1. **Dispatch.** One agent per task, each with `isolation: "worktree"` and
+   `model` = the `work:` model. Each worktree branches from the feature branch's
+   current HEAD, so it holds every earlier wave. Each agent receives the full
+   plan, its own task ID and owned files, and the **Code standards** section
+   verbatim, plus these rules:
+   - edit only owned files — if the task cannot be done without touching
+     another file, stop and report a blocker instead;
+   - run the task's `test:` command until it passes; never run the full gate;
+   - commit on the worktree branch as `wip <task-id>`, then report the branch,
+     the commit SHA, the changed files, and the tail of the test output.
+2. **Dependencies.** A fresh worktree has no installed dependencies. If the
+   main checkout has a dependency directory (`node_modules`, `.venv`, `vendor`,
+   …) and the wave changes no lockfile, the agent symlinks it from the main
+   checkout; otherwise it runs the repo's install command in its worktree. The
+   W1 dependency task always installs for real.
+3. **Ownership check.** For each task, run
+   `git diff --name-only <wave-base>..<sha>`. A file outside the task's
+   ownership rejects it: re-dispatch it **once**, naming the offending files. A
+   second stray is a blocker.
+4. **Merge.** Merge each task branch into the feature branch in task order.
+   Disjoint ownership rules out a textual conflict; if one occurs anyway, it is
+   a blocker. Then run the union of the wave's `test:` commands on the merged
+   tree, one after another, to catch tasks that pass alone but break together.
+   A failure there gets one fix agent on the merged tree in the main checkout,
+   then the wave's tests run again.
+5. **Checkpoint.** Commit the merged wave on the feature branch as a checkpoint;
+   the next wave branches from it. Remove each worktree once its branch has
+   merged.
+
+If any agent in a wave reports a blocker, let the rest of the wave finish,
+merge **nothing** from that wave, and escalate per `## Escalation and stop` —
+push the branch holding the completed waves, open a draft pull request, label,
+and notify.
+
+### Gates
+
+**Verification gate.** Step 6's run is unchanged: one `gate:` agent runs the
+**full** command on the merged branch. Never shard or subset the gate; making
+the command itself faster is the project's concern. On failure, the gate agent
+reports each failure with the files it implicates, and the orchestrator maps
+them to tasks by ownership:
+
+- failures in distinct tasks get **one fix agent per task, concurrently**,
+  under the `### Implement` rules — worktree, owned files only, the task's
+  `test:`, commit, ownership check, merge;
+- failures that map to no single task (lint config, cross-cutting) go to
+  **one** fix agent in the main checkout;
+- then the **full** gate runs again.
+
+**Intent gate.** Every reviewer is a fresh `review:` agent that wrote no code;
+dispatch them all in one message:
+
+- **Criteria reviewers** — split the acceptance criteria into up to *cap*
+  groups. Each reviewer gets the full contract, the full branch diff, and its
+  own criteria, and returns step 7's per-criterion verdict, defaulting to
+  `not satisfied` when it cannot find the evidence.
+- **Scope reviewer** — gets the contract, every criterion, and the diff, and
+  reports only changes no criterion asked for.
+
+Combine the results into the single verdict table step 10 uses. For an unmet
+criterion, re-dispatch the tasks that `serves:` it as a **fix wave** carrying
+the reviewers' notes, then re-run the full gate and the **entire** intent gate
+over every criterion — a fix can regress one that passed.
+
 ## Labels this skill relies on (issue mode)
 
 | Label                       | Meaning                                                          |
@@ -576,7 +738,10 @@ issue mode copies them into its `.github/`; see `templates/README.md`.
 - **Reject malformed model tokens.** An unknown phase key or model name stops the
   run at step 0, before any branch exists or any issue is claimed — never
   silently drop it or substitute a default.
-- **Always dispatch each phase as a synchronous subagent** carrying its phase's
+- **Each phase completes before the next begins.** Without `--parallel`, a
+  phase is one synchronous subagent; with it, a phase may fan out concurrent
+  agents, dispatched in one message and all awaited before the next phase.
+- **Always dispatch each phase as a subagent** carrying its phase's
   model, and always pass the plan and the code standards into the implementation
   dispatch.
 - **Never author or re-scope issues or roadmap items.** You claim them, build
