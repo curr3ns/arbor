@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# grove-deliver <item>   (message JSON on stdin)
+# Delivers one message into the item's read-only inbox, atomically, as <seq>-<type>.json.
+source "$(dirname "$0")/grove-lib.sh"
+item="${1:?usage: grove-deliver <item> < message.json}"; valid_item "$item"
+inbox="$(item_dir "$item")/in/inbox"
+[ -d "$inbox" ] || die "$item has no inbox (not launched)"
+msg="$(head -c 16385)"
+[ "${#msg}" -le 16384 ] || die "message larger than 16 KiB"
+type="$(jq -er 'select(type == "object") | .type' <<<"$msg")" || die "message is not a JSON object with a type"
+case "$type" in change-request|cr-reply|criteria|footprint-reply|notice) ;; *) die "unknown message type $type" ;; esac
+jq -e '.id | test("^m[0-9]{1,12}$")' <<<"$msg" >/dev/null || die "message id must be m<n>"
+seq=$(( $(find "$inbox" -maxdepth 1 -name '[0-9]*.json' | wc -l) + 1 ))
+name="$(printf '%06d' "$seq")-$type.json"
+tmp="$inbox/.tmp-$$"
+jq -c . <<<"$msg" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$inbox/$name"
+echo "$name"

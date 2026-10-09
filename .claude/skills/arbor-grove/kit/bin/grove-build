@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# grove-build: builds the agent and egress images, the repo's project image when it has
+# .arbor/agent.Dockerfile, and the egress network. The project image is built on the host with
+# network access from the repo's own Dockerfile: only for repos you trust.
+source "$(dirname "$0")/grove-lib.sh"
+need docker
+docker build -q -t arbor-grove-egress:latest "$KIT/proxy" >/dev/null
+echo "built arbor-grove-egress:latest"
+docker build -q -t arbor-grove-agent:latest "$KIT/agent" >/dev/null
+echo "built arbor-grove-agent:latest"
+if [ -f "$ROOT/.arbor/agent.Dockerfile" ]; then
+  docker build -q -t "arbor-grove-agent-$NAME:latest" -f "$ROOT/.arbor/agent.Dockerfile" "$ROOT" >/dev/null
+  echo "built arbor-grove-agent-$NAME:latest (from .arbor/agent.Dockerfile)"
+fi
+docker network inspect "$EGRESS_NET" >/dev/null 2>&1 || docker network create "$EGRESS_NET" >/dev/null
+echo "network $EGRESS_NET ready"

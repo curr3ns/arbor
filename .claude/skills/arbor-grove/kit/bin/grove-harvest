@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# grove-harvest <item>
+#
+# Imports out/branch.bundle into the mirror as refs/grove/wip/<item> and runs the mechanical checks
+# the intent gate cannot judge, against the item's footprint in items/<item>/footprint.json
+# ({"globs": [...], "whole_repo": false}, grants included). Prints one JSON report:
+#
+#   {"bundle": true, "base": sha, "head": sha, "commits": n, "files": [...], "lines": n, "bytes": n,
+#    "protected": [...], "binary": [...], "symlink": [...], "submodule": [...], "lfs": [...],
+#    "mode_changes": [...], "merges": n, "outside_footprint": [...], "secrets": [...],
+#    "oversize": bool, "clean": bool}
+#
+# {"bundle": false} when the run left no branch. Paths are repo-relative; "secrets" lists files whose
+# added lines look like credentials, never the matched text.
+source "$(dirname "$0")/grove-lib.sh"
+item="${1:?usage: grove-harvest <item>}"; valid_item "$item"
+dir="$(item_dir "$item")"
+bundle="$dir/out/branch.bundle"
+if ! safe_file "$bundle" $((512 * 1024 * 1024)); then echo '{"bundle":false}'; exit 0; fi
+
+wip="refs/grove/wip/$item"
+git -C "$MIRROR" fetch -q "$bundle" "+refs/heads/grove/$item:$wip" 2>/dev/null || die "the bundle has no branch grove/$item"
+head="$(git -C "$MIRROR" rev-parse "$wip")"
+base="$(git -C "$MIRROR" merge-base "refs/heads/$BASE" "$head")" || die "grove/$item shares no history with $BASE"
+g() { git -C "$MIRROR" "$@"; }
+
+commits="$(g rev-list --count "$base..$head")"
+merges="$(g rev-list --merges --count "$base..$head")"
+files="$(g diff --name-only --no-renames "$base" "$head")"
+shortstat="$(g diff --shortstat --no-renames "$base" "$head")"
+lines=$(( $(sed -nE 's/.* ([0-9]+) insertion.*/\1/p' <<<"$shortstat" | head -1 || true)+0 + $(sed -nE 's/.* ([0-9]+) deletion.*/\1/p' <<<"$shortstat" | head -1 || true)+0 ))
+bytes="$(g diff --no-renames "$base" "$head" | wc -c | tr -d ' ')"
+
+protected="$(grep -Ei '^(\.arbor|\.grove|\.github)(/|$)|^\.gitlab-ci' <<<"$files" || true)"
+binary="$(g diff --numstat --no-renames "$base" "$head" | awk -F'\t' '$1 == "-" && $2 == "-" { print $3 }')"
+raw="$(g diff --raw --no-renames "$base" "$head")"
+symlink="$(awk -F'\t' '{ split($1, m, " "); if (m[2] == "120000" || m[1] == ":120000") print $2 }' <<<"$raw")"
+submodule="$(awk -F'\t' '{ split($1, m, " "); if (m[2] == "160000" || m[1] == ":160000") print $2 }' <<<"$raw")"
+mode_changes="$(awk -F'\t' '{ split($1, m, " "); if (m[1] != ":000000" && m[2] != "000000" && substr(m[1], 2) != m[2]) print $2 }' <<<"$raw")"
+
+lfs=""
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  size="$(g cat-file -s "$head:$f" 2>/dev/null)" || continue
+  [ "$size" -lt 1024 ] && g cat-file -p "$head:$f" | head -1 | grep -q '^version https://git-lfs' && lfs+="$f"$'\n'
+done <<<"$files"
+
+# Footprint: a literal path reserves itself and its subtree; a glob reserves everything under its
+# static prefix (the part before the first wildcard character).
+outside=""
+fp="$dir/footprint.json"
+if safe_file "$fp" 65536 && [ "$(jq -r '.whole_repo // false' "$fp")" != true ]; then
+  globs="$(jq -r '.globs[]? | strings' "$fp")"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    inside=no
+    while IFS= read -r glob; do
+      [ -n "$glob" ] || continue
+      prefix="${glob%%[\*\?\[\{\(\!\@\+\\]*}"; prefix="${prefix#./}"
+      if [ "$prefix" = "$glob" ]; then
+        p="${prefix%/}"; { [ "$f" = "$p" ] || [[ "$f" == "$p/"* ]]; } && inside=yes
+      else
+        [[ "$f" == "$prefix"* ]] && inside=yes
+      fi
+      [ "$inside" = yes ] && break
+    done <<<"$globs"
+    [ "$inside" = yes ] || outside+="$f"$'\n'
+  done <<<"$files"
+fi
+
+# Added lines that look like credentials, or hold the grove's own Claude credential.
+cred=""; safe_file "$CREDENTIAL_FILE" 4096 && cred="$(cat "$CREDENTIAL_FILE")"
+secrets="$(g diff -U0 --no-renames "$base" "$head" | GROVE_CRED="$cred" awk '
+  /^\+\+\+ b\// { file = substr($0, 7); next }
+  /^\+/ {
+    if ($0 ~ /(gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-ant-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/ \
+        || (length(ENVIRON["GROVE_CRED"]) >= 8 && index($0, ENVIRON["GROVE_CRED"]) > 0)) hit[file] = 1
+  }
+  END { for (f in hit) print f }')"
+
+max_lines="$(cfg .limits.max_diff_lines 3000)"
+oversize=false; [ "$lines" -gt "$max_lines" ] && oversize=true
+
+list() { jq -Rn '[inputs | select(length > 0)]' <<<"$1"; }
+jq -n --arg base "$base" --arg head "$head" --argjson commits "$commits" --argjson merges "$merges" \
+  --argjson lines "$lines" --argjson bytes "$bytes" --argjson oversize "$oversize" \
+  --argjson files "$(list "$files")" --argjson protected "$(list "$protected")" \
+  --argjson binary "$(list "$binary")" --argjson symlink "$(list "$symlink")" \
+  --argjson submodule "$(list "$submodule")" --argjson lfs "$(list "$lfs")" \
+  --argjson mode_changes "$(list "$mode_changes")" --argjson outside "$(list "$outside")" \
+  --argjson secrets "$(list "$secrets")" '
+  {bundle: true, base: $base, head: $head, commits: $commits, files: $files, lines: $lines, bytes: $bytes,
+   protected: $protected, binary: $binary, symlink: $symlink, submodule: $submodule, lfs: $lfs,
+   mode_changes: $mode_changes, merges: $merges, outside_footprint: $outside, secrets: $secrets,
+   oversize: $oversize}
+  | .clean = ((.protected + .binary + .symlink + .submodule + .lfs + .outside_footprint + .secrets | length) == 0
+              and .merges == 0 and (.oversize | not) and .commits > 0)'

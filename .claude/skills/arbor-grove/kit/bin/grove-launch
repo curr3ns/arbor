@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# grove-launch <item> <work|regate>
+#
+# Starts one item's containers: a per-agent egress proxy on the egress bridge, listening only on a
+# Unix socket in the item's sock volume, and the agent with no network at all, whose relay is its
+# only way out through that socket. The session must have written items/<item>/in/task.json first.
+#
+#   work    bundles the default branch (plus refs/grove/wip/<item> when task.json resumes from it),
+#           copies the Claude credential in, allows api.anthropic.com plus grove.registries
+#   regate  bundles refs/grove/rebased/<item>, no credential, allows only grove.registries
+#
+# Prints "<agent container> <run id>". The run id (also in in/run) tells this launch's mail and
+# exit apart from an earlier run's.
+source "$(dirname "$0")/grove-lib.sh"
+need docker
+item="${1:?usage: grove-launch <item> <work|regate>}"; mode="${2:?usage: grove-launch <item> <work|regate>}"
+valid_item "$item"
+case "$mode" in work|regate) ;; *) die "mode must be work or regate" ;; esac
+
+dir="$(item_dir "$item")"
+task="$dir/in/task.json"
+safe_file "$task" $((256 * 1024)) || die "no task at $task"
+[ "$(jq -r .mode "$task")" = "$mode" ] || die "task.json mode is not $mode"
+[ -z "$(grove_containers "$item")" ] || die "$item already has containers; run grove-teardown $item first"
+
+# Images must speak this protocol and reach the network only through the socket.
+for img in "$AGENT_IMAGE" "$EGRESS_IMAGE"; do
+  labels="$(docker image inspect -f '{{json .Config.Labels}}' "$img" 2>/dev/null)" || die "image $img is missing; run grove-build"
+  [ "$(jq -r '."arbor.grove.egress"' <<<"$labels")" = socket ] || die "image $img lacks arbor.grove.egress=socket"
+done
+[ "$(docker image inspect -f '{{index .Config.Labels "arbor.grove.protocol"}}' "$AGENT_IMAGE")" = 1 ] \
+  || die "image $AGENT_IMAGE does not speak exchange protocol 1; rebuild it"
+
+# The exchange: in/ is the hypervisor's (read-only to the agent), out/ is world-writable because
+# the container runs as uid 1000. Both sit under .arbor/grove (0700), so no other host user reaches them.
+# A new run starts with an empty inbox: messages for an earlier run are not this run's.
+force_rm "$dir/out"; rm -rf "$dir/secret" "$dir/in/repo.bundle" "$dir/in/inbox" "$dir/in/run"
+mkdir -p "$dir/in/inbox" "$dir/out/outbox"
+chmod 755 "$dir/in" "$dir/in/inbox"
+chmod 644 "$task"
+chmod 777 "$dir/out" "$dir/out/outbox"
+run="$(date +%Y%m%d%H%M%S)-$mode"
+printf '%s\n' "$run" > "$dir/in/run" && chmod 644 "$dir/in/run"
+
+refs=()
+if [ "$mode" = work ]; then
+  refs=("refs/heads/$BASE")
+  wip="$(jq -r '.resume.ref // empty' "$task")"
+  if [ -n "$wip" ]; then
+    [ "$wip" = "refs/grove/wip/$item" ] || die "task.json resumes from $wip, not refs/grove/wip/$item"
+    refs+=("$wip")
+  fi
+else
+  ref="$(jq -r .ref "$task")"
+  [ "$ref" = "refs/grove/rebased/$item" ] || die "regate task.json names $ref, not refs/grove/rebased/$item"
+  refs=("$ref")
+fi
+git -C "$MIRROR" bundle create -q "$dir/in/repo.bundle" "${refs[@]}" 2>/dev/null
+chmod 644 "$dir/in/repo.bundle"
+
+secret_mount=()
+cred_env=()
+if [ "$mode" = work ]; then
+  safe_file "$CREDENTIAL_FILE" 4096 || die "no Claude credential at $CREDENTIAL_FILE; run grove-credential in a terminal"
+  mkdir -p "$dir/secret" && chmod 755 "$dir/secret"
+  cp "$CREDENTIAL_FILE" "$dir/secret/claude" && chmod 644 "$dir/secret/claude"
+  secret_mount=(-v "$dir/secret:/run/grove-secret:ro")
+  env_name="$(cfg .credential_env CLAUDE_CODE_OAUTH_TOKEN)"
+  case "$env_name" in ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN) ;; *) die "grove.credential_env must be ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN" ;; esac
+  cred_env=(-e "GROVE_CREDENTIAL_ENV=$env_name")
+fi
+
+registries="$(cfg .registries)"
+if [ "$mode" = work ]; then allow="api.anthropic.com${registries:+,$registries}"; else allow="$registries"; fi
+[[ "$allow" =~ ^[A-Za-z0-9.:,-]*$ ]] || die "grove.registries holds something other than host names"
+
+labels=(--label "arbor.grove=$NAME" --label "arbor.grove.item=$item")
+hardening=(--read-only --cap-drop ALL --security-opt no-new-privileges:true --user 1000:1000)
+ws="$(cname "$item" ws)"; sock="$(cname "$item" sock)"
+
+cleanup() { "$(dirname "$0")/grove-teardown" "$item" --keep-out >/dev/null 2>&1 || true; }
+trap 'cleanup' ERR
+
+docker network inspect "$EGRESS_NET" >/dev/null 2>&1 || die "network $EGRESS_NET is missing; run grove-build"
+docker volume create "${labels[@]}" "$ws" >/dev/null
+docker volume create "${labels[@]}" "$sock" >/dev/null
+
+docker run -d --name "$(cname "$item" egress)" "${labels[@]}" --label arbor.grove.role=egress \
+  "${hardening[@]}" --network "$EGRESS_NET" --cpus 0.25 --memory 128m \
+  -e "GROVE_ALLOW=$allow" -e GROVE_LISTEN=/run/grove-egress/proxy.sock \
+  -v "$sock:/run/grove-egress" "$EGRESS_IMAGE" >/dev/null
+
+proxy=http://127.0.0.1:3128
+docker run -d --name "$(cname "$item" agent)" "${labels[@]}" --label "arbor.grove.role=$mode" \
+  "${hardening[@]}" --network none \
+  --cpus "$(cfg .resources.cpus 2)" --memory "$(cfg .resources.memory_mb 4096)m" --pids-limit 1024 \
+  --tmpfs /tmp:rw,mode=1777 --tmpfs /home/node:rw,uid=1000,gid=1000,mode=0700 \
+  -e HOME=/home/node -e "GROVE_MODE=$mode" ${cred_env[@]+"${cred_env[@]}"} \
+  -e "HTTPS_PROXY=$proxy" -e "HTTP_PROXY=$proxy" -e "https_proxy=$proxy" -e "http_proxy=$proxy" \
+  -e NO_PROXY=localhost,127.0.0.1 -e no_proxy=localhost,127.0.0.1 \
+  -v "$dir/in:/exchange/in:ro" -v "$dir/out:/exchange/out" ${secret_mount[@]+"${secret_mount[@]}"} \
+  -v "$ws:/workspace" -v "$sock:/run/grove-egress:ro" \
+  "$AGENT_IMAGE" >/dev/null
+
+trap - ERR
+echo "$(cname "$item" agent) $run"

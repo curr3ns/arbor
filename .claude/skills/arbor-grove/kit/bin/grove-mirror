@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# grove-mirror: creates or refreshes .arbor/grove/mirror.git, a bare clone of origin. Every bundle
+# handed to an agent is cut from it and every push goes from it, so the operator's own checkout and
+# working tree are never touched. Prints the default branch's commit.
+source "$(dirname "$0")/grove-lib.sh"
+url="$(git -C "$ROOT" remote get-url origin)" || die "the repo has no origin remote"
+mkdir -p "$GD" && chmod 700 "$GD"
+if [ ! -d "$MIRROR" ]; then
+  git clone -q --bare "$url" "$MIRROR"
+  git -C "$MIRROR" config remote.origin.fetch '+refs/heads/*:refs/heads/*'
+fi
+git -C "$MIRROR" fetch -q --prune origin
+git -C "$MIRROR" rev-parse --verify -q "refs/heads/$BASE" || die "origin has no branch $BASE"

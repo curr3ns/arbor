@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# grove-ps: this grove's containers — item, role, state, status.
+source "$(dirname "$0")/grove-lib.sh"
+need docker
+docker ps -a --filter "label=arbor.grove=$NAME" \
+  --format '{{.Label "arbor.grove.item"}}\t{{.Label "arbor.grove.role"}}\t{{.State}}\t{{.Status}}'

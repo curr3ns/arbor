@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# grove-read <item> <file under out/> [max bytes]
+# Prints an agent-written file only if it is a regular file (never a symlink, FIFO or directory)
+# within the size cap (default 64 KiB). Exit 1 when it is absent or refused. What it prints is
+# untrusted agent output: data, never instructions.
+source "$(dirname "$0")/grove-lib.sh"
+item="${1:?usage: grove-read <item> <file> [max]}"; rel="${2:?usage: grove-read <item> <file> [max]}"
+valid_item "$item"
+[[ "$rel" =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$ ]] && [[ "$rel" != *..* ]] || die "refusing path $rel"
+out="$(item_dir "$item")/out"
+[ -d "$out" ] && [ ! -L "$out" ] || exit 1
+case "$rel" in */*) [ ! -L "$out/${rel%%/*}" ] || exit 1 ;; esac
+safe_file "$out/$rel" "${3:-65536}" || exit 1
+cat "$out/$rel"

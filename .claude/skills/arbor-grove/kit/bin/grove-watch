@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# grove-watch: the hypervisor's event stream, one line per event, for the session's Monitor.
+#
+#   exit <item> <run> <work|regate>  the item's agent container from launch <run> stopped
+#   mail <item> <run> <file>     a new message in the item's outbox, from launch <run>
+#   stale <item> <seconds>       a running agent's heartbeat is older than GROVE_STALE_SECONDS (600)
+#   answer <item>                a human answer waits in .arbor/grove/answers/<item>.md
+#   stop [drain]                 .arbor/grove/stop exists (holding "drain" for a drain)
+#   tick                         every GROVE_TICK_SECONDS (300): time to poll the tracker and timeouts
+#
+# On start it reports what is already there (stopped containers, every outbox file); the session
+# drops events it has already handled, by its own record. Never exits on its own.
+source "$(dirname "$0")/grove-lib.sh"
+need docker
+interval="${GROVE_WATCH_INTERVAL:-5}"
+stale="${GROVE_STALE_SECONDS:-600}"
+tick="${GROVE_TICK_SECONDS:-300}"
+seen="$(mktemp -t grove-watch.XXXXXX)"
+trap 'rm -f "$seen"' EXIT
+
+once() { grep -qxF "$1" "$seen" && return 1; echo "$1" >> "$seen"; }
+
+last_tick=$(date +%s)
+echo tick
+while :; do
+  now=$(date +%s)
+  while IFS=$'\t' read -r item role state; do
+    [ -n "$item" ] || continue
+    case "$state" in
+      exited|dead)
+        run="$(tr -cd 'a-z0-9-' < "$GD/items/$item/in/run" 2>/dev/null || true)"
+        once "exit:$item:$run" && echo "exit $item ${run:-none} $role" ;;
+      running)
+        hb="$(item_dir "$item")/out/heartbeat"
+        if safe_file "$hb" 32; then
+          beat=$(tr -cd '0-9' < "$hb"); beat=${beat:-0}
+          if [ $((now - beat)) -gt "$stale" ]; then once "stale:$item:$beat" && echo "stale $item $((now - beat))"; fi
+        fi ;;
+    esac
+  done < <(docker ps -a --filter "label=arbor.grove=$NAME" --filter "label=arbor.grove.role=work" \
+             --format '{{.Label "arbor.grove.item"}}\t{{.Label "arbor.grove.role"}}\t{{.State}}' 2>/dev/null
+           docker ps -a --filter "label=arbor.grove=$NAME" --filter "label=arbor.grove.role=regate" \
+             --format '{{.Label "arbor.grove.item"}}\t{{.Label "arbor.grove.role"}}\t{{.State}}' 2>/dev/null)
+
+  for box in "$GD"/items/*/out/outbox; do
+    [ -d "$box" ] && [ ! -L "$box" ] || continue
+    item="${box#"$GD"/items/}"; item="${item%%/*}"
+    run="$(tr -cd 'a-z0-9-' < "$GD/items/$item/in/run" 2>/dev/null || true)"
+    for f in "$box"/[0-9]*.json; do
+      [ -f "$f" ] || continue
+      name="${f##*/}"
+      [[ "$name" =~ ^[0-9]{6}-[a-z-]+\.json$ ]] || continue
+      once "mail:$item:$run:$name" && echo "mail $item ${run:-none} $name"
+    done
+  done
+
+  for f in "$GD"/answers/*.md; do
+    [ -f "$f" ] && [ ! -L "$f" ] || continue
+    item="${f##*/}"; item="${item%.md}"
+    [[ "$item" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || continue
+    once "answer:$item:$(wc -c < "$f" | tr -d ' '):$(cksum < "$f" | cut -d' ' -f1)" && echo "answer $item"
+  done
+  if [ -f "$GD/stop" ]; then
+    how="$(tr -cd 'a-z' < "$GD/stop" | head -c 10)"
+    once "stop:$how:$(cksum < "$GD/stop" | cut -d' ' -f1)" && echo "stop${how:+ $how}"
+  fi
+
+  if [ $((now - last_tick)) -ge "$tick" ]; then echo tick; last_tick=$now; fi
+  sleep "$interval"
+done
