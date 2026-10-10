@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# grove-admit <item>
+#
+# Admits one `ready` item, all in one command so a run needs no hand-built shell:
+#   1. GitHub: labels the issue agent:working and, on its first launch only, comments its criteria
+#      (Jira: the session claims the issue itself first).
+#   2. Writes items/<item>/in/task.json and items/<item>/footprint.json from state.json.
+#   3. grove-launch <item> work, then records run, launched_at and state "running" in state.json.
+#
+# Prints the item's {state, run}. The session calls this only when it is the state's sole writer.
+source "$(dirname "$0")/grove-lib.sh"
+need docker
+item="${1:?usage: grove-admit <item>}"; valid_item "$item"
+STATE="$GD/state.json"
+[ -f "$STATE" ] || die "no state at $STATE"
+it="$(jq -c --arg id "$item" '.items[$id] // empty' "$STATE")"
+[ -n "$it" ] || die "$item is not in state"
+[ "$(jq -r .state <<<"$it")" = ready ] || die "$item is $(jq -r .state <<<"$it"), not ready"
+
+first=true; [ "$(jq -r '.run // empty' <<<"$it")" = "" ] || first=false
+
+if [ "$(jq -r '.source // "github"' <<<"$it")" = github ]; then
+  need gh
+  n="$(jq -r .key <<<"$it")"; [[ "$n" =~ ^[0-9]+$ ]] || die "$item has no issue number"
+  gh issue edit "$n" --add-label agent:working >/dev/null
+  if $first; then
+    body="$(mktemp "${TMPDIR:-/tmp}/grove-claim.XXXXXX")"; trap 'rm -f "$body"' EXIT
+    {
+      printf 'Grove `%s` has taken this issue (item `%s`). An agent will work it in an isolated container against these acceptance criteria:\n\n' "$NAME" "$item"
+      jq -r '.criteria | to_entries[] | "\(.key + 1). \(.value)"' <<<"$it"
+      if [ "$(cfg .pr_mode false)" = true ]; then
+        printf '\nIt opens a pull request after the verification command and an independent intent gate both pass.\n'
+      else
+        printf '\nIt merges after the verification command and an independent intent gate both pass.\n'
+      fi
+    } > "$body"
+    gh issue comment "$n" -F "$body" >/dev/null
+  fi
+fi
+
+dir="$(item_dir "$item")"
+mkdir -p "$dir/in"
+jq --arg id "$item" --argjson cfg "$(jq -c .grove "$CONFIG")" --argjson first "$first" '
+  .items[$id] as $it
+  | {
+      mode: "work",
+      item: {id: $id, title: $it.title, body: $it.body, url: $it.url},
+      repo: {default_branch: ($cfg.default_branch // "main"), verify: $cfg.verify},
+      branch: "grove/\($id)",
+      model: ($cfg.models.agent // "sonnet"),
+      criteria: $it.criteria,
+      footprint: $it.footprint,
+      peers: [.items | to_entries[] | select(.key != $id and .value.state == "running")
+              | {id: .key, state: .value.state, title: .value.title,
+                 footprint: (.value.footprint.globs + (.value.grants // []))}],
+      limits: {verify_attempts: ($cfg.limits.verify_attempts // 3),
+               cr_wait_minutes: ($cfg.limits.cr_wait_minutes // 20)},
+      resume: (if $first then null
+               else {ref: (if $it.wip then "refs/grove/wip/\($id)" else null end), notes: ($it.notes // "")}
+               end)
+    }' "$STATE" > "$dir/in/task.json"
+jq --arg id "$item" '.items[$id] | {globs: (.footprint.globs + (.grants // [])), whole_repo: .footprint.whole_repo}' \
+  "$STATE" > "$dir/footprint.json"
+
+read -r _ run < <("$KIT/bin/grove-launch" "$item" work)
+[ -n "$run" ] || die "grove-launch printed no run id"
+jq --arg id "$item" --arg run "$run" --argjson t "$(date +%s)" \
+  '.items[$id] += {state: "running", run: $run, launched_at: $t}' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+jq -c --arg id "$item" '.items[$id] | {state, run}' "$STATE"

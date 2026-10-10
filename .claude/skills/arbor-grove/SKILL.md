@@ -2,6 +2,7 @@
 name: arbor-grove
 description: Make this Claude session the hypervisor of a grove — burn down a GitHub or Jira issue backlog with Claude agents that each run in an isolated Docker container (no network but an egress allowlist, no git credentials), coordinating through a mailbox, gated by mechanical checks and an independent intent-gate subagent, and merged one at a time through a serial queue that rebases, re-verifies and pushes one squashed commit per issue (or opens a PR in pr_mode). Subcommands — init sets the repo up (config, images, credential); run starts the long-running hypervisor loop; status summarizes items and containers; answer <item> "<text>" resumes a parked item; stop [--drain] ends the run (drain lets running agents finish). Use when the user wants a backlog worked by parallel autonomous agents rather than one arbor-auto-work cycle at a time.
 license: MIT
+allowed-tools: Bash(${CLAUDE_SKILL_DIR}/kit/bin/grove-* *)
 metadata:
   author: arbor
   version: "1.0"
@@ -15,8 +16,10 @@ many as `max_agents` allows into isolated containers, carries mail between them,
 reviews what they hand back, and merges the results one at a time. The agents do the coding; this
 session never edits the repo's code itself.
 
-Everything runs from the target repo's root. `$KIT` below is this skill's `kit/bin` directory (the
-base directory shown when this skill loads, plus `/kit/bin`). Read these before acting on them:
+Everything runs from the target repo's root. `$KIT` below is `${CLAUDE_SKILL_DIR}/kit/bin`. Run
+each kit script as its own command, spelled with that exact absolute path and never wrapped in
+`bash -c`, a variable or a compound with other commands: the skill pre-approves exactly that form,
+so a run needs no permission prompts for it. Read these before acting on them:
 
 | Reference                 | Holds                                                      |
 | ------------------------- | ---------------------------------------------------------- |
@@ -35,6 +38,7 @@ The only code is in `kit/`; everything else is this skill. Every script reads th
 | `grove-build`                            | builds `arbor-grove-agent`, `arbor-grove-egress`, the project image from `.arbor/agent.Dockerfile`, and the egress network |
 | `grove-mirror`                           | creates/refreshes `.arbor/grove/mirror.git`, a bare clone of origin       |
 | `grove-credential`                       | stores the Claude credential (run by the **user**, in their own terminal) |
+| `grove-admit <item>`                     | claims a `ready` item's issue, writes its task and footprint, launches it, marks it `running` |
 | `grove-launch <item> work\|regate`       | starts the egress proxy and the agent container; prints `<container> <run>` |
 | `grove-watch`                            | the event stream (`exit`, `mail`, `stale`, `answer`, `stop`, `tick`)      |
 | `grove-read <item> <file> [max]`         | prints an `out/` file only if it is a regular file under the cap          |
@@ -165,14 +169,12 @@ merged a1b2c3d`), not commentary.
    the next `ready` item — oldest first — whose `after` items are all `done` and whose footprint
    overlaps no `running`, `reviewing` or `merging` item's footprint plus grants (a `whole_repo`
    footprint overlaps everything; two footprints overlap when either's static prefix is a prefix
-   of the other's). Then **launch** it:
-   1. Claim the issue: `gh issue edit <n> --add-label agent:working` (Jira: the claim in
-      `arbor-auto-work`'s Jira mode). Comment once, on the first launch only, with its criteria.
-   2. Write `.arbor/grove/items/<item>/in/task.json` (`reference/protocol.md`): `model` from
-      `models.agent`, `peers` = the other `running` items (id, state, title, footprint),
-      `resume` = `{ref: "refs/grove/wip/<item>" if wip else null, notes}` when the item has run
-      before, else `null`. Write `items/<item>/footprint.json` (footprint globs plus grants).
-   3. `$KIT/grove-launch <item> work` → record `run`, `launched_at`, `running`.
+   of the other's). Then **launch** it with `$KIT/grove-admit <item>` — one command that claims
+   the GitHub issue (`agent:working`, plus the criteria comment on its first launch only), writes
+   `items/<item>/in/task.json` (`reference/protocol.md`) and `footprint.json` from state, runs
+   `grove-launch <item> work`, and records `run`, `launched_at` and `running` in state. For Jira,
+   claim the issue first (the claim in `arbor-auto-work`'s Jira mode). Never hand-build this in
+   an inline script.
 6. **Merge queue.** If nothing is `merging` in progress and `queue` is not empty, start the head
    (`## Merge queue`).
 7. **Done?** If nothing is `queued`, `ready`, `running`, `reviewing` or `merging`, and the last
