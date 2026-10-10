@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# grove-state '<jq filter>' [jq args...]
+# grove-state start
+#
+# The session's only way to change .arbor/grove/state.json: runs the filter over it (with any
+# --arg/--argjson given) and replaces the file atomically, refusing a result without .items.
+# `start` begins a run: creates an empty state when there is none and removes a leftover stop file. Prints the new state's item count.
+source "$(dirname "$0")/grove-lib.sh"
+f="${1:?usage: grove-state '<jq filter>' [jq args...] | start}"; shift
+if [ "$f" = start ]; then
+  mkdir -p "$GD" && chmod 700 "$GD"
+  [ -f "$STATE" ] || jq -n '{version: 1, paused: false, pause_reason: null, next_message: 1,
+    merging: null, queue: [], threads: {}, items: {}}' > "$STATE"
+  rm -f "$GD/stop"
+else
+  state_update "$f" "$@"
+fi
+jq -r '"\(.items | length) items"' "$STATE"

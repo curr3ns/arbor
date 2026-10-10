@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# grove-regate <item>
+# The merge queue's re-gate: writes the regate task for refs/grove/rebased/<item>, runs
+# grove-launch <item> regate, and records the run and launched_at (the item stays `merging`).
+# Prints the item's {state, run}.
+source "$(dirname "$0")/grove-lib.sh"
+need docker
+item="${1:?usage: grove-regate <item>}"; valid_item "$item"
+[ "$(jq -r --arg id "$item" '.items[$id].state // empty' "$STATE")" = merging ] || die "$item is not merging"
+dir="$(item_dir "$item")"; mkdir -p "$dir/in"
+jq -n --arg id "$item" --arg verify "$(cfg .verify)" \
+  '{mode: "regate", ref: "refs/grove/rebased/\($id)", repo: {verify: $verify}}' > "$dir/in/task.json"
+read -r _ run < <("$KIT/bin/grove-launch" "$item" regate)
+[ -n "$run" ] || die "grove-launch printed no run id"
+state_update '.items[$id] += {run: $run, launched_at: $t}' --arg id "$item" --arg run "$run" --argjson t "$(date +%s)"
+jq -c --arg id "$item" '.items[$id] | {state, run}' "$STATE"

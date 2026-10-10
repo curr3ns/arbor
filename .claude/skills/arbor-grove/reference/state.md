@@ -46,8 +46,9 @@ Written by `/arbor-grove init`; other top-level keys belong to other arbor skill
 
 ## State — `.arbor/grove/state.json`
 
-The hypervisor session is its only writer. Write it after every change, atomically (write
-`state.json.tmp`, then `mv`). Everything else can be rebuilt from it plus `grove-ps`.
+The hypervisor session is its only writer. Write it after every change, through
+`$KIT/grove-state '<jq filter>' [--arg …]`, which replaces it atomically (`grove-state start`
+creates it). Everything else can be rebuilt from it plus `grove-ps`.
 
 ```json
 {

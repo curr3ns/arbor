@@ -11,7 +11,6 @@
 source "$(dirname "$0")/grove-lib.sh"
 need docker
 item="${1:?usage: grove-admit <item>}"; valid_item "$item"
-STATE="$GD/state.json"
 [ -f "$STATE" ] || die "no state at $STATE"
 it="$(jq -c --arg id "$item" '.items[$id] // empty' "$STATE")"
 [ -n "$it" ] || die "$item is not in state"
@@ -64,6 +63,6 @@ jq --arg id "$item" '.items[$id] | {globs: (.footprint.globs + (.grants // [])),
 
 read -r _ run < <("$KIT/bin/grove-launch" "$item" work)
 [ -n "$run" ] || die "grove-launch printed no run id"
-jq --arg id "$item" --arg run "$run" --argjson t "$(date +%s)" \
-  '.items[$id] += {state: "running", run: $run, launched_at: $t}' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+state_update '.items[$id] += {state: "running", run: $run, launched_at: $t}' \
+  --arg id "$item" --arg run "$run" --argjson t "$(date +%s)"
 jq -c --arg id "$item" '.items[$id] | {state, run}' "$STATE"

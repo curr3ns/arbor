@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# grove-gh — every GitHub call a run makes, so none needs a hand-built command line. Bodies are
+# read from stdin (a heredoc); the caller fences agent text and neutralises @ mentions first.
+#
+#   grove-gh auth                  gh auth status
+#   grove-gh labels                creates the grove labels (idempotent)
+#   grove-gh intake                open issues not yet in state, minus grove:skip, agent:working and
+#                                  agent:needs-clarification, filtered by grove.intake.label (JSON)
+#   grove-gh view <n>              {state, author, comments: [{author, body, createdAt, url}]}
+#   grove-gh trusted <login>       true when the login has admin/maintain/write and is not a bot
+#   grove-gh comment <n>           posts stdin as a comment; prints its URL
+#   grove-gh label <n> [+add] [-remove]...
+#   grove-gh close <n>             closes the issue unless it is closed already; prints its state
+#   grove-gh file <title>          files stdin as a new issue labelled grove:proposed and grove:skip; prints its URL
+#   grove-gh pr <item>             opens (or updates) the PR of branch grove/<item>, body on stdin; prints its URL
+#   grove-gh pr-state <item>       {state, url, mergedAt} of that PR, or null
+source "$(dirname "$0")/grove-lib.sh"
+need gh
+cmd="${1:?usage: grove-gh auth|labels|intake|view|trusted|comment|label|close|file|pr|pr-state ...}"; shift
+num() { [[ "${1:-}" =~ ^[0-9]+$ ]] || die "issue number required, got '${1:-}'"; printf '%s' "$1"; }
+body() { local b; b="$(cat)"; [ -n "$b" ] || die "empty body on stdin"; printf '%s' "$b"; }
+case "$cmd" in
+auth) gh auth status ;;
+labels)
+  gh label create agent:working --color FBCA04 --description "An agent is working this issue" --force >/dev/null
+  gh label create agent:needs-clarification --color D93F0B --description "The agent needs a human answer" --force >/dev/null
+  gh label create agent:done --color 0E8A16 --description "Merged by an agent" --force >/dev/null
+  gh label create grove:skip --color BFBFBF --description "Grove does not take this issue" --force >/dev/null
+  gh label create grove:proposed --color C5DEF5 --description "Proposed by a grove agent; a human must accept it" --force >/dev/null
+  echo "labels ready" ;;
+intake)
+  label="$(cfg .intake.label)"
+  known="$( [ -f "$STATE" ] && jq -c '.items | keys' "$STATE" || echo '[]')"
+  gh issue list --state open --limit 100 ${label:+--label "$label"} \
+    --json number,title,body,author,labels,url \
+  | jq --argjson known "$known" '[.[]
+      | select(("gh-\(.number)" | IN($known[])) | not)
+      | select([.labels[].name] | any(. == "grove:skip" or . == "agent:working" or . == "agent:needs-clarification") | not)
+      | {number, title, body, author: .author.login, labels: [.labels[].name], url}]' ;;
+view)
+  gh issue view "$(num "${1:-}")" --json state,author,comments \
+  | jq '{state, author: .author.login,
+         comments: [.comments[] | {author: .author.login, body, createdAt, url}]}' ;;
+trusted)
+  login="${1:?login required}"
+  [[ "$login" =~ ^[A-Za-z0-9-]+$ ]] || { echo false; exit 0; }
+  p="$(gh api "repos/{owner}/{repo}/collaborators/$login/permission" --jq .permission 2>/dev/null || true)"
+  case "$p" in admin|maintain|write) echo true ;; *) echo false ;; esac ;;
+comment) n="$(num "${1:-}")"; body | gh issue comment "$n" -F - ;;
+label)
+  n="$(num "${1:-}")"; shift; args=()
+  for l in "$@"; do
+    case "$l" in +?*) args+=(--add-label "${l#+}") ;; -?*) args+=(--remove-label "${l#-}") ;; *) die "label $l must start with + or -" ;; esac
+  done
+  [ "${#args[@]}" -gt 0 ] || die "no labels given"
+  gh issue edit "$n" "${args[@]}" >/dev/null; echo "labelled #$n" ;;
+close)
+  n="$(num "${1:-}")"
+  [ "$(gh issue view "$n" --json state --jq .state)" = CLOSED ] || gh issue close "$n" >/dev/null
+  gh issue view "$n" --json state --jq .state ;;
+file)
+  title="${1:?title required}"
+  body | gh issue create --title "$title" --label grove:proposed --label grove:skip -F - ;;
+pr)
+  item="${1:?item required}"; valid_item "$item"
+  title="$(jq -er --arg id "$item" '.items[$id].title' "$STATE")" || die "$item is not in state"
+  b="$(body)"
+  url="$(gh pr list --head "grove/$item" --state open --json url --jq '.[0].url // empty')"
+  if [ -n "$url" ]; then
+    printf '%s' "$b" | gh pr edit "$url" --title "$title" --body-file - >/dev/null; echo "$url"
+  else
+    printf '%s' "$b" | gh pr create --head "grove/$item" --base "$BASE" --title "$title" --body-file -
+  fi ;;
+pr-state)
+  item="${1:?item required}"; valid_item "$item"
+  gh pr list --head "grove/$item" --state all --limit 1 --json state,url,mergedAt | jq -c '.[0] // null' ;;
+*) die "unknown subcommand $cmd" ;;
+esac

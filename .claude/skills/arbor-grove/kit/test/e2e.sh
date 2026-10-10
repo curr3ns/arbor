@@ -32,7 +32,8 @@ git_q -C "$T/seed" add -A && git_q -C "$T/seed" commit -qm init
 git clone -q --bare "$T/seed" "$T/origin.git"
 git clone -q "$T/origin.git" "$T/repo"
 mkdir -p "$T/repo/.arbor"
-jq -n --arg name "$NAME" '{grove: {name: $name, default_branch: "main", verify: "sh check.sh", registries: []}}' > "$T/repo/.arbor/config.json"
+jq -n --arg name "$NAME" '{grove: {name: $name, default_branch: "main", verify: "sh check.sh", registries: [],
+  limits: {cr_wait_minutes: 1}}}' > "$T/repo/.arbor/config.json"
 printf 'fake-credential' > "$GROVE_CREDENTIAL_FILE"; chmod 600 "$GROVE_CREDENTIAL_FILE"
 
 "$BIN/grove-build" >/dev/null
@@ -43,40 +44,47 @@ pass "images built"
 pass "mirror"
 
 items="$T/repo/.arbor/grove/items"
-mkdir -p "$items/gh-1/in"
-jq -n '{mode: "work", item: {id: "gh-1", title: "Add hello", body: "Add hello.txt", url: null},
-  repo: {default_branch: "main", verify: "sh check.sh"}, branch: "grove/gh-1", model: "sonnet",
-  criteria: ["hello.txt exists"], footprint: {globs: ["hello.txt"], whole_repo: false}, peers: [],
-  limits: {verify_attempts: 3, cr_wait_minutes: 1}, resume: null}' > "$items/gh-1/in/task.json"
-echo '{"globs": ["hello.txt"], "whole_repo": false}' > "$items/gh-1/footprint.json"
+"$BIN/grove-state" start >/dev/null
+# source jira: grove-admit leaves the claim to the session, so the test needs no GitHub
+"$BIN/grove-state" '.items["gh-1"] = {source: "jira", key: "E2E-1", title: "Add hello",
+  body: "Add hello.txt", url: null, state: "ready", criteria: ["hello.txt exists"],
+  footprint: {globs: ["hello.txt"], whole_repo: false}, grants: [], run: null, wip: false, notes: ""}' >/dev/null
+"$BIN/grove-state" 'del(.items)' >/dev/null 2>&1 && fail "grove-state let a filter drop .items"
+pass "grove-state"
 
 "$BIN/grove-watch" > "$T/events" 2>&1 & watch_pid=$!
-read -r agent run < <("$BIN/grove-launch" gh-1 work)
+admitted="$("$BIN/grove-admit" gh-1)"
+[ "$(jq -r .state <<<"$admitted")" = running ] || fail "admit: $admitted"
+run="$(jq -r .run <<<"$admitted")"; agent="arbor-grove-$NAME-gh-1-agent"
+[ "$(jq -c '[.mode, .branch, .resume, .limits.cr_wait_minutes, .footprint.globs]' "$items/gh-1/in/task.json")" \
+  = '["work","grove/gh-1",null,1,["hello.txt"]]' ] || fail "admit task: $(cat "$items/gh-1/in/task.json")"
 [ "$(docker wait "$agent")" = 0 ] || { docker logs "$agent" >&2; fail "agent container exit"; }
 result="$("$BIN/grove-read" gh-1 result.json)"
 [ "$(jq -r .outcome <<<"$result")" = handoff ] || { cat "$items/gh-1/out/claude.stderr" >&2; fail "outcome: $result"; }
 [ "$(jq -r .verify.passed <<<"$result")" = true ] || fail "entrypoint verify: $result"
 [ "$(jq -r .verify.exit <<<"$result")" = 0 ] || fail "verify exit was forged or wrong: $result"
-pass "work run hands off through relay and egress, verify passes"
+pass "admit launches a work run that hands off through relay and egress, verify passes"
 
 "$BIN/grove-read" gh-1 handoff.md | grep -q 'hello.txt:1' || fail "handoff"
 ln -s /etc/passwd "$items/gh-1/out/evil"
 "$BIN/grove-read" gh-1 evil >/dev/null && fail "grove-read followed a symlink"
 pass "grove-read refuses symlinks"
 
-sleep 3
-grep -q "^exit gh-1 $run work$" "$T/events" || { cat "$T/events" >&2; fail "no exit event"; }
-grep -q "^mail gh-1 $run 000001-status.json$" "$T/events" || { cat "$T/events" >&2; fail "no mail event"; }
-mkdir -p "$T/repo/.arbor/grove/answers" && echo "use blue" > "$T/repo/.arbor/grove/answers/gh-1.md"
-echo drain > "$T/repo/.arbor/grove/stop"
-sleep 3
-grep -q '^answer gh-1$' "$T/events" || { cat "$T/events" >&2; fail "no answer event"; }
-grep -q '^stop drain$' "$T/events" || { cat "$T/events" >&2; fail "no stop event"; }
-rm -f "$T/repo/.arbor/grove/stop"
+# wait_event <line>: up to 20 s for the watcher to print it
+wait_event() { for _ in $(seq 40); do grep -qx "$1" "$T/events" && return 0; sleep 0.5; done; return 1; }
+wait_event "exit gh-1 $run work" || { cat "$T/events" >&2; fail "no exit event"; }
+wait_event "mail gh-1 $run 000001-status.json" || { cat "$T/events" >&2; fail "no mail event"; }
+echo "use blue" | "$BIN/grove-signal" answer gh-1 >/dev/null
+"$BIN/grove-signal" stop drain >/dev/null
+wait_event "answer gh-1" || { cat "$T/events" >&2; fail "no answer event"; }
+wait_event "stop drain" || { cat "$T/events" >&2; fail "no stop event"; }
+[ "$("$BIN/grove-signal" take gh-1)" = "use blue" ] || fail "signal take"
+[ ! -e "$T/repo/.arbor/grove/answers/gh-1.md" ] || fail "signal take left the answer"
+"$BIN/grove-signal" clear >/dev/null
 pass "watch reports exit, mail, answer and stop"
 
-echo '{"type":"notice","id":"m1","from":"grove","text":"hi"}' | "$BIN/grove-deliver" gh-1 >/dev/null
-[ -f "$items/gh-1/in/inbox/000001-notice.json" ] || fail "deliver"
+[ "$("$BIN/grove-deliver" gh-1 <<<'{"type":"notice","from":"grove","text":"hi"}')" = "000001-notice.json m1" ] || fail "deliver"
+[ "$(jq -r .next_message "$T/repo/.arbor/grove/state.json")" = 2 ] || fail "deliver did not advance next_message"
 echo '{"type":"evil","id":"m2"}' | "$BIN/grove-deliver" gh-1 2>/dev/null && fail "deliver accepted an unknown type"
 pass "deliver"
 
@@ -94,13 +102,14 @@ pass "teardown"
 git clone -q "$T/origin.git" "$T/other"
 echo more >> "$T/other/README.md"
 git_q -C "$T/other" commit -qam "Unrelated" && git -C "$T/other" push -q origin main
-echo "Add hello.txt (#1)" > "$T/msg"
-prep="$("$BIN/grove-land" prepare gh-1 "$head" "$T/msg")"
+msg="$("$BIN/grove-message" gh-1)"
+head -1 "$msg" | grep -qx 'E2E-1: Add hello' || fail "message: $(cat "$msg")"
+prep="$("$BIN/grove-land" prepare gh-1 "$head" "$msg")"
 [ "$(jq -r .status <<<"$prep")" = ok ] && [ "$(jq -r .changed <<<"$prep")" = false ] || fail "prepare: $prep"
 pass "rebase onto a moved default branch, diff unchanged"
 
-jq -n '{mode: "regate", ref: "refs/grove/rebased/gh-1", repo: {verify: "sh check.sh"}}' > "$items/gh-1/in/task.json"
-read -r agent run < <("$BIN/grove-launch" gh-1 regate)
+"$BIN/grove-state" '.items["gh-1"].state = "merging"' >/dev/null
+"$BIN/grove-regate" gh-1 >/dev/null
 docker wait "$agent" >/dev/null
 [ "$("$BIN/grove-read" gh-1 result.json | jq -r .passed)" = true ] || fail "regate"
 [ ! -e "$items/gh-1/secret" ] || fail "regate got a credential"
@@ -108,7 +117,7 @@ docker wait "$agent" >/dev/null
 pass "regate passes without a credential"
 
 [ "$(jq -r .status <<<"$("$BIN/grove-land" push gh-1)")" = pushed ] || fail "push"
-git -C "$T/origin.git" log -1 --format=%s main | grep -qx "Add hello.txt (#1)" || fail "origin head"
+git -C "$T/origin.git" log -1 --format=%s main | grep -qx "E2E-1: Add hello" || fail "origin head"
 git -C "$T/origin.git" cat-file -e main:hello.txt || fail "hello.txt on origin"
 pass "squashed push to origin"
 

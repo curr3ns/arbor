@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# grove-signal — the files other sessions use to reach a running hypervisor (grove-watch sees them).
+#
+#   grove-signal answer <item>   stores a human answer (stdin) in .arbor/grove/answers/<item>.md
+#   grove-signal take <item>     prints a stored answer and deletes it (the run session only)
+#   grove-signal stop [drain]    asks the run to stop (drain: let running items finish)
+#   grove-signal clear           removes the stop file (the run session, once stopped)
+source "$(dirname "$0")/grove-lib.sh"
+cmd="${1:?usage: grove-signal answer|take|stop|clear ...}"
+answers="$GD/answers"
+case "$cmd" in
+answer)
+  item="${2:?item required}"; valid_item "$item"
+  text="$(cat)"; [ -n "$text" ] || die "empty answer on stdin"
+  mkdir -p "$answers"; printf '%s\n' "$text" > "$answers/.tmp-$item" && mv "$answers/.tmp-$item" "$answers/$item.md"
+  echo "answer stored for $item" ;;
+take)
+  item="${2:?item required}"; valid_item "$item"
+  safe_file "$answers/$item.md" 65536 || die "no answer for $item"
+  cat "$answers/$item.md"; rm -f "$answers/$item.md" ;;
+stop) mkdir -p "$GD"; printf '%s\n' "${2:-}" > "$GD/stop"; echo "stop${2:+ $2} requested" ;;
+clear) rm -f "$GD/stop"; echo "stop cleared" ;;
+*) die "unknown subcommand $cmd" ;;
+esac

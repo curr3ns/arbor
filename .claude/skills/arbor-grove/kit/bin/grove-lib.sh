@@ -59,3 +59,14 @@ force_rm() {
     -c 'rm -rf /x/* /x/.[!.]* /x/..?*' >/dev/null 2>&1 || true
   rm -rf "$1"
 }
+
+STATE="$GD/state.json"
+# state_update <jq filter> [jq args...]: rewrites state.json through the filter, atomically, and
+# only when the result is still a state object.
+state_update() {
+  local f="$1"; shift
+  [ -f "$STATE" ] || die "no state at $STATE"
+  jq "$@" "$f" "$STATE" > "$STATE.tmp" || { rm -f "$STATE.tmp"; die "state filter failed"; }
+  jq -e '.items | type == "object"' "$STATE.tmp" >/dev/null || { rm -f "$STATE.tmp"; die "state filter dropped .items"; }
+  mv "$STATE.tmp" "$STATE"
+}

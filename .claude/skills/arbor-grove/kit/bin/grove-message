@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# grove-message <item>
+# Writes the merge commit message for an item to items/<item>/message, from state: the title and
+# issue reference, the closing line, the numbered criteria and a Grove-item trailer. Prints the path.
+source "$(dirname "$0")/grove-lib.sh"
+item="${1:?usage: grove-message <item>}"; valid_item "$item"
+jq -e --arg id "$item" '.items[$id]' "$STATE" >/dev/null || die "$item is not in state"
+dir="$(item_dir "$item")"; mkdir -p "$dir"
+jq -r --arg id "$item" '.items[$id] as $it
+  | (if ($it.source // "github") == "github"
+     then "\($it.title) (#\($it.key))\n\nCloses #\($it.key)"
+     else "\($it.key): \($it.title)\n\nJira: \($it.key)" end)
+  + "\n\n" + ([$it.criteria | to_entries[] | "\(.key + 1). \(.value)"] | join("\n"))
+  + "\n\nGrove-item: \($id)"' "$STATE" > "$dir/message"
+echo "$dir/message"

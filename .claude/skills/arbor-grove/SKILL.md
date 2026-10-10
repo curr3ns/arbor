@@ -19,7 +19,10 @@ session never edits the repo's code itself.
 Everything runs from the target repo's root. `$KIT` below is `${CLAUDE_SKILL_DIR}/kit/bin`. Run
 each kit script as its own command, spelled with that exact absolute path and never wrapped in
 `bash -c`, a variable or a compound with other commands: the skill pre-approves exactly that form,
-so a run needs no permission prompts for it. Read these before acting on them:
+so a run needs no permission prompts for it. Every shell step of a run goes through a kit script
+— to state, GitHub, the mirror and the signal files — so never hand-build `gh`, `jq`, `git`,
+`rm` or redirect commands for them; pass bodies and messages to a script as a quoted heredoc
+(`<<'EOF'`). Read these before acting on them:
 
 | Reference                 | Holds                                                      |
 | ------------------------- | ---------------------------------------------------------- |
@@ -38,11 +41,18 @@ The only code is in `kit/`; everything else is this skill. Every script reads th
 | `grove-build`                            | builds `arbor-grove-agent`, `arbor-grove-egress`, the project image from `.arbor/agent.Dockerfile`, and the egress network |
 | `grove-mirror`                           | creates/refreshes `.arbor/grove/mirror.git`, a bare clone of origin       |
 | `grove-credential`                       | stores the Claude credential (run by the **user**, in their own terminal) |
+| `grove-check`                            | the run's start checks: docker, images, credential, `gh auth`, the mirror |
+| `grove-state '<jq filter>' [args]`       | the only way to change `state.json` (atomic); `grove-state start` creates it and clears a leftover stop |
+| `grove-gh <subcommand>`                  | every GitHub call: `auth`, `labels`, `intake`, `view`, `trusted`, `comment`, `label`, `close`, `file`, `pr`, `pr-state` |
 | `grove-admit <item>`                     | claims a `ready` item's issue, writes its task and footprint, launches it, marks it `running` |
+| `grove-regate <item>`                    | writes a `merging` item's re-gate task, launches it, records the run      |
+| `grove-message <item>`                   | writes the merge commit message to `items/<item>/message`; prints its path |
+| `grove-review checkout\|stat\|diff\|remove` | the judges' read-only checkout and the diff, from the mirror           |
+| `grove-signal answer\|take\|stop\|clear`   | answer and stop files between sessions                                 |
 | `grove-launch <item> work\|regate`       | starts the egress proxy and the agent container; prints `<container> <run>` |
 | `grove-watch`                            | the event stream (`exit`, `mail`, `stale`, `answer`, `stop`, `tick`)      |
 | `grove-read <item> <file> [max]`         | prints an `out/` file only if it is a regular file under the cap          |
-| `grove-deliver <item>`                   | delivers one message (stdin) into the item's inbox                        |
+| `grove-deliver <item>`                   | delivers one message (stdin) into the item's inbox, numbering it when it has no `id`; prints `<file> <id>` |
 | `grove-harvest <item>`                   | imports the branch bundle and runs the mechanical checks                  |
 | `grove-land prepare\|push\|pr\|forget`   | rebase + squash, push, PR branch, cleanup — all in the mirror             |
 | `grove-teardown <item> [--keep-out]`     | removes the item's containers, volumes and credential copy               |
@@ -71,7 +81,7 @@ the current `status`.
 
 ### init
 
-1. **Prerequisites.** `docker info`, `git`, `jq`, and for the source: `gh auth status` (GitHub) or
+1. **Prerequisites.** `docker info`, `git`, `jq`, and for the source: `$KIT/grove-gh auth` (GitHub) or
    the `jira` CLI / an Atlassian MCP server (Jira). The repo must have an `origin` remote. Stop and
    say what is missing.
 2. **Interview** with `AskUserQuestion` — propose defaults from the repo, never ask for something
@@ -103,8 +113,8 @@ the current `status`.
    `<KIT>/grove-credential` (print the absolute path), which reads the token without echoing it.
    Set `credential_env` to `CLAUDE_CODE_OAUTH_TOKEN`, or `ANTHROPIC_API_KEY` if they paste an API
    key. Never ask them to paste it into this conversation.
-6. **Labels.** On GitHub create any missing labels: `agent:working`, `agent:needs-clarification`,
-   `agent:done`, `grove:skip`, `grove:proposed` (`gh label create … --force` is idempotent).
+6. **Labels.** On GitHub, `$KIT/grove-gh labels` creates `agent:working`,
+   `agent:needs-clarification`, `agent:done`, `grove:skip` and `grove:proposed` (idempotent).
 7. Say what `run` will do and how to stop it.
 
 ### run
@@ -113,11 +123,12 @@ The hypervisor loop. It runs until the backlog is empty and nothing is running, 
 
 **Start.**
 
-1. Check: config present (else `init`); `docker info`; images present (`docker image inspect`)
-   else `grove-build`; the credential file exists (else tell the user to run `grove-credential`
-   and stop); `gh auth status` or Jira access; `grove-mirror` succeeds.
-2. Load `.arbor/grove/state.json`, or create it (`reference/state.md`). Remove a leftover
-   `.arbor/grove/stop`. Apply any answers waiting in `.arbor/grove/answers/` (`### Answers`).
+1. Check: config present (else `init`), then `$KIT/grove-check`, and act on each `missing` line:
+   images → `$KIT/grove-build`; the credential → tell the user to run `grove-credential` and stop;
+   anything else → say what is missing and stop. Jira: check access with the Jira tools.
+2. `$KIT/grove-state start` (creates `.arbor/grove/state.json` if missing, removes a leftover stop
+   file), then read the state with the Read tool. Apply any answers waiting in
+   `.arbor/grove/answers/` (`### Answers`).
 3. **Reconcile** with `$KIT/grove-ps`:
    - a container whose item is not `running`/`merging` in state → `grove-teardown <item>`;
    - a `running` item whose container exited → handle it now as an `exit` event;
@@ -125,13 +136,16 @@ The hypervisor loop. It runs until the backlog is empty and nothing is running, 
    - `merging` with a re-gate container that exited → handle the exit; with none → start its
      merge again from `prepare`.
 4. **Arm the watcher.** Load the `Monitor` tool (ToolSearch `select:Monitor`) and start
-   `cd <repo> && <KIT>/grove-watch` with `timeout_ms: 1800000` and description
+   `$KIT/grove-watch` (absolute path; the session's directory is the repo) with
+   `timeout_ms: 1800000` and description
    `grove <name> events`. Every line it prints arrives as an event. When the monitor expires,
    re-arm it the same way — the new watcher replays what already exists, and `handled` in state
    drops the replays.
 5. Run a **tick** now.
 
-Then wait for events. Handle each one fully, persist state, and go back to waiting. Keep messages
+Then wait for events. Handle each one fully, persist state (`$KIT/grove-state`, one filter per
+transition, e.g. `$KIT/grove-state '.items[$id].state = "ready"' --arg id gh-12`), and go back to
+waiting. Read state with the Read tool, never a shell `cat`/`jq`. Keep messages
 to the user short: one line per transition (`gh-12 admitted`, `gh-9 parked: question`, `gh-7
 merged a1b2c3d`), not commentary.
 
@@ -149,16 +163,16 @@ merged a1b2c3d`), not commentary.
 
 ### Tick
 
-1. **Intake.** List open issues (GitHub:
-   `gh issue list --state open --limit 100 --json number,title,body,author,labels,url`, filtered by
-   `intake.label` when set; Jira: the source query in `arbor-auto-work`'s Jira mode, without a
-   lock label). Skip issues labelled `grove:skip`, `agent:working` (someone else's cycle holds
-   it), `agent:needs-clarification`, or already in state. Apply the trust rule. Add the rest as
+1. **Intake.** List open issues (GitHub: `$KIT/grove-gh intake`, which already drops issues in
+   state or labelled `grove:skip`, `agent:working` (someone else's cycle holds it) or
+   `agent:needs-clarification`, and applies `intake.label`; Jira: the source query in
+   `arbor-auto-work`'s Jira mode, without a lock label, skipping the same). Apply the trust rule
+   (`$KIT/grove-gh trusted <login>`). Add the rest as
    `queued` with id `gh-<n>` (or the lowercased Jira key).
 2. **Parked items.** For each `parked` item, check for a trusted `@grove` answer after the park
-   comment (`gh issue view <n> --json comments,state`) → `## Answers`; a closed issue → `failed`.
-   In `pr_mode`, for each `in-review` item check its PR: merged → finish as `done` (`## Merge
-   queue`, step 6, without pushing); closed unmerged → park `pr-closed`.
+   comment (`$KIT/grove-gh view <n>`) → `## Answers`; a closed issue → `failed`.
+   In `pr_mode`, for each `in-review` item check its PR (`$KIT/grove-gh pr-state <item>`): merged →
+   finish as `done` (`## Merge queue`, step 6, without pushing); closed unmerged → park `pr-closed`.
 3. **Triage** every `queued` item: up to 4 judge subagents at once, as `reference/judges.md`
    says. Valid → store `criteria`, `size`, `footprint`, `after`; `ready`. A question → park
    `needs-criteria` with it. Invalid twice → park `judge-failed`.
@@ -221,28 +235,28 @@ findings.
 
 One item at a time, the head of `queue`; `merging` in state names it while in progress.
 
-1. Write the commit message to `items/<item>/message`: `<title> (#<n>)`, a blank line, `Closes
-   #<n>` (Jira: `<KEY-n>: <title>` and a `Jira: <KEY-n>` line), the numbered criteria, and a
-   `Grove-item: <item>` trailer.
-2. `$KIT/grove-land prepare <item> <reviewed> <message file>`:
+1. `$KIT/grove-message <item>` writes the commit message (`<title> (#<n>)`, `Closes #<n>` — Jira:
+   `<KEY-n>: <title>` and a `Jira: <KEY-n>` line — the numbered criteria and a `Grove-item`
+   trailer) and prints its path.
+2. `$KIT/grove-land prepare <item> <reviewed> <message path>`:
    - `conflict` → **rework**, notes: the conflicting files and "rebase your branch onto the
      current default branch (`git rebase <base>`; never merge)". Leave the queue.
    - `empty` → park `empty-change` (the change is already on the default branch).
    - `ok` with `changed: true` → run the **intent gate** again on the prepared commit (base:
      `prepare.base`); fail → **rework**.
-3. Write the re-gate task (`{"mode": "regate", "ref": "refs/grove/rebased/<item>", "repo":
-   {"verify": …}}`) and `$KIT/grove-launch <item> regate`; record the run. Wait for its `exit`.
+3. `$KIT/grove-regate <item>` writes the re-gate task, launches it and records the run. Wait for
+   its `exit`.
 4. On the re-gate's exit: `grove-read <item> result.json`; `grove-teardown <item>`.
    `passed: false` → **rework** with `verify.log` (the change no longer verifies on the current
    default branch); leave the queue.
 5. `pr_mode: false` → `$KIT/grove-land push <item>`: `pushed` → step 6; `moved` → back to step 2
    (`counts.land += 1`; at 3, park `merge-error`); `rejected` → park `push-refused`.
-   `pr_mode: true` → `$KIT/grove-land pr <item>`, then `gh pr create --head grove/<item> --base
-   <default> --title <title> --body <criteria table, "Closes #n", the gate's evidence>` (or
-   `gh pr edit` when it exists); state `in-review`, `pr` = its URL; leave the queue.
-6. **Done**: comment on the issue (commit link, the criteria with the gate's evidence), swap
-   `agent:working` → `agent:done`, close it if `Closes #n` did not (`gh issue view <n> --json
-   state`), Jira: the close in `arbor-auto-work`'s Jira mode. `grove-land forget <item>`, delete
+   `pr_mode: true` → `$KIT/grove-land pr <item>`, then `$KIT/grove-gh pr <item>` with the body
+   (criteria table, `Closes #n`, the gate's evidence) as a heredoc — it opens the PR or updates
+   the open one; state `in-review`, `pr` = the URL it prints; leave the queue.
+6. **Done**: `$KIT/grove-gh comment <n>` (commit link, the criteria with the gate's evidence),
+   `$KIT/grove-gh label <n> -agent:working +agent:done`, `$KIT/grove-gh close <n>` (a no-op when
+   `Closes #n` already closed it); Jira: the close in `arbor-auto-work`'s Jira mode. `grove-land forget <item>`, delete
    `items/<item>/`, state `done`, leave the queue, and start the next head.
 
 Any item still running whose footprint overlaps the merged files gets a `notice`: "`<item>` merged
@@ -251,9 +265,10 @@ into `<base>`; your branch will be rebased onto it at merge time."
 ### Mail
 
 `grove-read <item> outbox/<file> 16384`, parse it, mark `<run>:<file>` handled, and act by `type`
-(shapes in `reference/protocol.md`). Message ids come from `next_message` (`m<n>`, then
-increment). Deliver with `jq -n … | $KIT/grove-deliver <item>`. Anything malformed is dropped
-with a `notice` to the sender saying so.
+(shapes in `reference/protocol.md`). Deliver with a heredoc — `$KIT/grove-deliver <item>
+<<'EOF'`, the JSON without an `id`, `EOF` — and it takes the id from `next_message` (`m<n>`),
+advances it and prints `<file> <id>`. Anything malformed is dropped with a `notice` to the sender
+saying so.
 
 - **`status`** — record `phase` on the item. Nothing else.
 - **`footprint-expand`** — refuse with a `footprint-reply` when: a path fails the syntax in
@@ -268,8 +283,9 @@ with a `notice` to the sender saying so.
   - `queued` or `ready` → it cannot answer, so amend it directly: apply the `target` ops to the
     target's criteria and the `sender` ops to the sender's; reply `cr-reply accept` from `grove`
     and a `criteria` message to the sender; comment on both issues.
-  - anything else (or unknown) → file a new issue with the request as its body, labelled
-    `grove:proposed` and `grove:skip` (a human removes both to let it in), and send the sender a
+  - anything else (or unknown) → file a new issue with the request as its body
+    (`$KIT/grove-gh file "<title>"`, body as a heredoc; it is labelled `grove:proposed` and
+    `grove:skip`, and a human removes both to let it in), and send the sender a
     `notice` with its link.
 - **`cr-reply`** — find the thread by `in_reply_to`; ignore it unless the sender is the thread's
   `to`. `accept` → apply both sides' ops to the two items' criteria (log each in
@@ -283,7 +299,7 @@ by editing the issue and answering a parked item.
 
 ### Answers
 
-From `.arbor/grove/answers/<item>.md` (`answer` event; delete the file after reading) or a
+From `$KIT/grove-signal take <item>` (`answer` event; it prints the answer and deletes it) or a
 trusted `@grove` comment (tick): do what `reference/parking.md` says. An answer to an item that is
 not parked is acknowledged and appended to its notes for its next run; when it is running,
 also delivered as a `notice`.
@@ -296,21 +312,21 @@ questions in full (fenced). Point at `answer` for parked items.
 
 ### answer
 
-`/arbor-grove answer <item> "<text>"`: check the item is in state, then write the text to
-`.arbor/grove/answers/<item>.md` (`mkdir -p` the directory) and nothing else — `state.json` has
-one writer. A `run` session picks the answer up from its watcher; with none running, the next
+`/arbor-grove answer <item> "<text>"`: check the item is in state, then store the text with
+`$KIT/grove-signal answer <item>` (the text as a heredoc) and nothing else — `state.json` has one
+writer. A `run` session picks the answer up from its watcher; with none running, the next
 `run` applies it at start.
 
 ### stop
 
-`/arbor-grove stop` in another session writes `.arbor/grove/stop` (`drain` inside it for
-`--drain`); in the `run` session itself, act directly:
+`/arbor-grove stop` in another session runs `$KIT/grove-signal stop` (`$KIT/grove-signal stop
+drain` for `--drain`); in the `run` session itself, act directly:
 
 - **drain** — set `paused: true`; admit nothing more; let running items finish their whole path
   through review and the merge queue; then stop.
 - **stop** — for every `running` item: `grove-teardown <item> --keep-out`, `grove-harvest` to keep
   its WIP, park it `killed`. Finish nothing else: an item mid-merge stays `merging` and resumes
-  from `prepare` on the next `run`. Stop the monitor; delete `.arbor/grove/stop`.
+  from `prepare` on the next `run`. Stop the monitor (TaskStop); `$KIT/grove-signal clear`.
 
 Both end with the `status` summary.
 

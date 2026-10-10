@@ -1,8 +1,9 @@
 # Parking
 
-When the grove cannot go on with an item it parks it: records `park: {reason, question, at}`,
-comments on the issue, and swaps the labels (`agent:working` → `agent:needs-clarification` on
-GitHub; `agent-working` → `agent-needs-clarification` on Jira). The comment quotes the question as
+When the grove cannot go on with an item it parks it: records `park: {reason, question, at}`
+(`$KIT/grove-state`), comments on the issue (`$KIT/grove-gh comment <n>`, body as a heredoc), and
+swaps the labels (`$KIT/grove-gh label <n> -agent:working +agent:needs-clarification` on GitHub;
+`agent-working` → `agent-needs-clarification` on Jira). The comment quotes the question as
 a blockquote (so an `@grove` an agent wrote into it can never count as an answer) and ends with:
 
 > Answer with a comment that starts with `@grove`, or run `/arbor-grove answer <item> "<text>"`.
@@ -14,8 +15,7 @@ An answer counts when it is either:
 - `/arbor-grove answer <item> "<text>"` (writes `.arbor/grove/answers/<item>.md`), or
 - an issue comment posted **after** the park comment whose first non-quoted line starts with
   `@grove`, from a trusted human: on GitHub an author with `admin`, `maintain` or `write`
-  permission (`gh api repos/{owner}/{repo}/collaborators/{login}/permission --jq .permission`)
-  and not a bot; on Jira an account in `grove.jira.trusted_accounts`. Quoted lines (`>`) and
+  permission and not a bot (`$KIT/grove-gh trusted <login>` prints `true`); on Jira an account in `grove.jira.trusted_accounts`. Quoted lines (`>`) and
   fenced code are ignored when finding the `@grove` line.
 
 On an answer: append it to the item's `notes` (fenced as a human answer), acknowledge it on the

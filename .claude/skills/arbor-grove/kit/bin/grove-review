@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# grove-review — what the judges read, all from the mirror.
+#
+#   grove-review checkout <item> <commit>   a detached worktree at .arbor/grove/review/<item>
+#                                           (replacing any earlier one); prints its path
+#   grove-review stat <base> <head>         git diff --stat base..head
+#   grove-review diff <base> <head>         git diff base..head
+#   grove-review remove <item>              removes the item's review worktree
+source "$(dirname "$0")/grove-lib.sh"
+cmd="${1:?usage: grove-review checkout|stat|diff|remove ...}"
+g() { git -C "$MIRROR" "$@"; }
+rev() { g rev-parse --verify -q "${1:?commit required}^{commit}" || die "no commit $1 in the mirror"; }
+remove() { g worktree remove --force "$GD/review/$1" 2>/dev/null || rm -rf "$GD/review/$1"; g worktree prune; }
+case "$cmd" in
+checkout)
+  item="${2:?item required}"; valid_item "$item"; sha="$(rev "${3:-}")"
+  remove "$item"; mkdir -p "$GD/review"
+  g worktree add -q --detach "$GD/review/$item" "$sha"
+  echo "$GD/review/$item" ;;
+stat) g diff --stat "$(rev "${2:-}")..$(rev "${3:-}")" ;;
+diff) g diff "$(rev "${2:-}")..$(rev "${3:-}")" ;;
+remove) item="${2:?item required}"; valid_item "$item"; remove "$item"; echo "removed $item" ;;
+*) die "unknown subcommand $cmd" ;;
+esac
