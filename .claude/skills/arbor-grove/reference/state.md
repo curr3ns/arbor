@@ -20,10 +20,17 @@ Written by `/arbor-grove init`; other top-level keys belong to other arbor skill
     "pr_mode": false,
     "auto_merge_acknowledged": true,
     "jira": { "trusted_accounts": [] },
+    "host_verify": {
+      "command": "docker compose -f e2e/compose.yml up --build --abort-on-container-exit --exit-code-from e2e",
+      "cleanup": "docker compose -f e2e/compose.yml down -v --remove-orphans",
+      "guard": ["*compose*.y*ml"],
+      "acknowledged": true
+    },
     "resources": { "cpus": 2, "memory_mb": 4096 },
     "limits": {
       "verify_attempts": 3, "rework": 2, "crash": 2, "run_minutes": 90,
-      "cr_wait_minutes": 20, "max_diff_lines": 3000, "footprint_grants": 10
+      "cr_wait_minutes": 20, "max_diff_lines": 3000, "footprint_grants": 10,
+      "host_verify_minutes": 30
     }
   }
 }
@@ -32,7 +39,8 @@ Written by `/arbor-grove init`; other top-level keys belong to other arbor skill
 | Key                       | Meaning                                                                                   |
 | ------------------------- | ----------------------------------------------------------------------------------------- |
 | `name`                    | the grove's name: container, volume and label prefix (`^[a-z0-9][a-z0-9-]{0,30}$`)          |
-| `verify`                  | the verification command, run in containers only — never on the host                     |
+| `verify`                  | the verification command, run in containers — every gate stage that needs no Docker daemon |
+| `host_verify`             | optional: the gate stage that needs Docker (an e2e stack), run on the host by `grove-host-verify` in the merge queue. `command` and `cleanup` call the `docker` CLI; `guard` lists bash patterns (`*` matches `/`) for the files the daemon acts on; `acknowledged` must be `true` (the operator accepted host runs) |
 | `source`                  | `github` or `jira`; Jira uses `roadmap.jira.project` and its transitions                  |
 | `intake.label`            | when set, only issues carrying this label are taken                                       |
 | `max_agents`              | most work containers at once (re-gates do not count)                                      |
@@ -75,6 +83,7 @@ creates it). Everything else can be rebuilt from it plus `grove-ps`.
       "counts": { "crash": 0, "rework": 0, "land": 0 },
       "wip": true, "notes": "",
       "reviewed": null, "rebased": null, "pr": null,
+      "guard_approved": { "e2e/compose.yml": ["3f2a…"] },
       "park": null,
       "handled": ["20261009120000-work:000001-status.json"]
     }
@@ -95,6 +104,9 @@ creates it). Everything else can be rebuilt from it plus `grove-ps`.
 | `parked`    | waiting for a human (`park: {reason, question, at, comment}`)       | `queued`, `ready`, `failed`             |
 | `done`      | merged and closed                                                   | —                                       |
 | `failed`    | the issue was closed while parked                                   | —                                       |
+
+`guard_approved` maps each `host_verify.guard` file a human approved to the blob ids approved
+(`grove-host-verify approve`); only that exact content passes the guard.
 
 `handled` lists the events already acted on (`<run>:<file>` for mail, `exit:<run>` for exits) so a
 re-armed watcher's replay is ignored.

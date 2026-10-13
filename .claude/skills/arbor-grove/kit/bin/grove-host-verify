@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# grove-host-verify run|approve <item>
+#
+# Agent containers have no Docker daemon, so the gate stages that need one (an e2e stack, say)
+# cannot run there. grove.host_verify.command runs them on the host instead, against the agent's
+# code: the one place a grove runs repo-controlled commands outside a container, so it is fenced in.
+#
+#   run <item>      For a `merging` item whose container re-gate passed: checks
+#                   refs/grove/rebased/<item> out of the mirror into .arbor/grove/host/<item> (never
+#                   the operator's checkout) and runs the command there, with no tokens in its
+#                   environment, COMPOSE_PROJECT_NAME=arbor-grove-<name>-<item>-e2e (its own group, apart
+#                   from the item's grove containers), and a limit of
+#                   limits.host_verify_minutes. grove.host_verify.cleanup runs before and after; on
+#                   exit the project's leftover containers and the images compose built for it are
+#                   removed (pulled images stay). The merge queue is serial, so two stacks never hold the same ports. Runs nothing and
+#                   prints {"status": "guarded", "files": [...]} when the change touches a
+#                   grove.host_verify.guard file (what the daemon acts on: compose files, the scripts
+#                   the command runs) that a human has not approved. Otherwise writes the log's last
+#                   32 KiB to items/<item>/out/host-verify.log and prints {"status": "passed"|"failed",
+#                   "exit": n} or {"status": "timeout", "seconds": n}; {"status": "skipped"} when no
+#                   command is configured.
+#   approve <item>  On a trusted human's answer to a host-verify-guard park: records the guarded
+#                   files changed on refs/grove/wip/<item> (and refs/grove/rebased/<item>, when it
+#                   exists) as approved, .items[<item>].guard_approved = {path: [blob, ...]}. A later
+#                   change to any of them needs approval again. Prints the approved paths.
+source "$(dirname "$0")/grove-lib.sh"
+cmd="${1:?usage: grove-host-verify run|approve <item>}"; item="${2:?usage: grove-host-verify run|approve <item>}"
+valid_item "$item"
+[ -f "$STATE" ] || die "no state at $STATE"
+g() { git -C "$MIRROR" "$@"; }
+blob_at() { g rev-parse -q --verify "$1:$2" 2>/dev/null || echo deleted; }
+list() { jq -Rn '[inputs | select(length > 0)]' <<<"$1"; }
+
+case "$cmd" in
+approve)
+  [ "$(jq -r --arg id "$item" '.items[$id].park.reason // empty' "$STATE")" = host-verify-guard ] \
+    || die "$item is not parked host-verify-guard"
+  approved="$(guard_approved "$item")"
+  for ref in "refs/grove/wip/$item" "refs/grove/rebased/$item"; do
+    head="$(g rev-parse -q --verify "$ref")" || continue
+    if [ "$ref" = "refs/grove/wip/$item" ]; then base="$(g merge-base "refs/heads/$BASE" "$head")"; else base="$head^"; fi
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      approved="$(jq -c --arg f "$f" --arg b "$(blob_at "$head" "$f")" '.[$f] = ((.[$f] // []) + [$b] | unique)' <<<"$approved")"
+    done <<<"$(host_guarded "$base" "$head" '{}')"
+  done
+  state_update '.items[$id].guard_approved = $a' --arg id "$item" --argjson a "$approved"
+  jq -c '{approved: keys}' <<<"$approved"
+  ;;
+run)
+  [ "$(jq -r --arg id "$item" '.items[$id].state // empty' "$STATE")" = merging ] || die "$item is not merging"
+  command="$(jq -r '.grove.host_verify.command // empty' "$CONFIG")"
+  [ -n "$command" ] || { echo '{"status":"skipped"}'; exit 0; }
+  [ "$(jq -r '.grove.host_verify.acknowledged // false' "$CONFIG")" = true ] \
+    || die "grove.host_verify.acknowledged is not true: the operator has not accepted host runs (/arbor-grove init)"
+  cleanup_cmd="$(jq -r '.grove.host_verify.cleanup // empty' "$CONFIG")"
+  secs="${GROVE_HOST_VERIFY_SECONDS:-$(( $(cfg .limits.host_verify_minutes 30) * 60 ))}"
+  [[ "$secs" =~ ^[1-9][0-9]*$ ]] || die "limits.host_verify_minutes must be a positive number"
+  commit="$(g rev-parse -q --verify "refs/grove/rebased/$item")" || die "nothing prepared for $item"
+
+  guarded="$(host_guarded "$commit^" "$commit" "$(guard_approved "$item")")"
+  if [ -n "$guarded" ]; then
+    jq -cn --argjson files "$(list "$guarded")" '{status: "guarded", files: $files}'
+    exit 0
+  fi
+
+  dir="$(item_dir "$item")"; wt="$GD/host/$item"
+  # Containers that ran as root may leave files in the checkout the host user cannot remove.
+  remove() {
+    if [ -e "$wt" ] && ! rm -rf "$wt" 2>/dev/null; then
+      docker run --rm --network none --user 0:0 -v "$wt:/x" --entrypoint sh "$AGENT_IMAGE" \
+        -c 'rm -rf /x/* /x/.[!.]* /x/..?*' >/dev/null 2>&1 || true
+      rm -rf "$wt"
+    fi
+    g worktree prune
+  }
+  remove
+  mkdir -p "$GD/host" "$dir/out"
+  g worktree add -q --detach "$wt" "$commit"
+  trap 'remove; prune_e2e "$item"; rm -f "$dir/out/.host-verify.log"' EXIT
+
+  # A plain environment: what the docker CLI needs to find the daemon, and no token of any kind.
+  clean_env=(env -i "PATH=$PATH" "HOME=$HOME" "USER=${USER:-}" "LANG=${LANG:-C}" "TMPDIR=${TMPDIR:-/tmp}"
+    "COMPOSE_PROJECT_NAME=$(e2e_project "$item")" "GROVE_ITEM=$item")
+  for v in DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY; do
+    [ -z "${!v:-}" ] || clean_env+=("$v=${!v}")
+  done
+  # limited <seconds> <command...>: runs it in its own process group and kills the whole group when
+  # the time is up, exiting 124. macOS has no timeout(1).
+  limited() {
+    perl -MPOSIX=:sys_wait_h -e 'my $t = shift; my $pid = fork() // die "fork: $!";
+      if ($pid == 0) { setpgrp(0, 0); exec @ARGV or exit 127 }
+      $SIG{ALRM} = sub {
+        print STDERR "grove: timed out after ${t}s\n"; kill "TERM", -$pid;
+        for (1 .. 50) { last if waitpid($pid, WNOHANG) > 0; select(undef, undef, undef, 0.1) }
+        kill "KILL", -$pid; exit 124 };
+      alarm $t; waitpid($pid, 0); exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
+  }
+  sweep() { [ -z "$cleanup_cmd" ] || (cd "$wt" && limited 300 "${clean_env[@]}" sh -c "$cleanup_cmd"); }
+
+  log="$dir/out/.host-verify.log"
+  sweep >/dev/null 2>&1 || true # what an interrupted earlier run left up
+  set +e
+  (cd "$wt" && limited "$secs" "${clean_env[@]}" sh -c "$command") > "$log" 2>&1
+  rc=$?
+  set -e
+  if [ -n "$cleanup_cmd" ]; then { echo "--- grove: cleanup"; sweep; } >> "$log" 2>&1 || true; fi
+  tail -c 32768 "$log" > "$dir/out/host-verify.log"
+
+  case "$rc" in
+    0) echo '{"status":"passed","exit":0}' ;;
+    124) jq -cn --argjson s "$secs" '{status: "timeout", seconds: $s}' ;;
+    *) jq -cn --argjson rc "$rc" '{status: "failed", exit: $rc}' ;;
+  esac
+  ;;
+*) die "unknown command $cmd" ;;
+esac

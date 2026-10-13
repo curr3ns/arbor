@@ -8,10 +8,11 @@
 #   {"bundle": true, "base": sha, "head": sha, "commits": n, "files": [...], "lines": n, "bytes": n,
 #    "protected": [...], "binary": [...], "symlink": [...], "submodule": [...], "lfs": [...],
 #    "mode_changes": [...], "merges": n, "outside_footprint": [...], "secrets": [...],
-#    "oversize": bool, "clean": bool}
+#    "host_guard": [...], "oversize": bool, "clean": bool}
 #
 # {"bundle": false} when the run left no branch. Paths are repo-relative; "secrets" lists files whose
-# added lines look like credentials, never the matched text.
+# added lines look like credentials, never the matched text; "host_guard" lists changed
+# grove.host_verify.guard files a human has not approved (grove-host-verify approve).
 source "$(dirname "$0")/grove-lib.sh"
 item="${1:?usage: grove-harvest <item>}"; valid_item "$item"
 dir="$(item_dir "$item")"
@@ -78,6 +79,9 @@ secrets="$(g diff -U0 --no-renames "$base" "$head" | GROVE_CRED="$cred" awk '
   }
   END { for (f in hit) print f }')"
 
+# Files the host's Docker daemon would act on in grove-host-verify, changed and not yet approved.
+host_guard="$(host_guarded "$base" "$head" "$(guard_approved "$item")")"
+
 max_lines="$(cfg .limits.max_diff_lines 3000)"
 oversize=false; [ "$lines" -gt "$max_lines" ] && oversize=true
 
@@ -88,10 +92,10 @@ jq -n --arg base "$base" --arg head "$head" --argjson commits "$commits" --argjs
   --argjson binary "$(list "$binary")" --argjson symlink "$(list "$symlink")" \
   --argjson submodule "$(list "$submodule")" --argjson lfs "$(list "$lfs")" \
   --argjson mode_changes "$(list "$mode_changes")" --argjson outside "$(list "$outside")" \
-  --argjson secrets "$(list "$secrets")" '
+  --argjson secrets "$(list "$secrets")" --argjson host_guard "$(list "$host_guard")" '
   {bundle: true, base: $base, head: $head, commits: $commits, files: $files, lines: $lines, bytes: $bytes,
    protected: $protected, binary: $binary, symlink: $symlink, submodule: $submodule, lfs: $lfs,
    mode_changes: $mode_changes, merges: $merges, outside_footprint: $outside, secrets: $secrets,
-   oversize: $oversize}
-  | .clean = ((.protected + .binary + .symlink + .submodule + .lfs + .outside_footprint + .secrets | length) == 0
+   host_guard: $host_guard, oversize: $oversize}
+  | .clean = ((.protected + .binary + .symlink + .submodule + .lfs + .outside_footprint + .secrets + .host_guard | length) == 0
               and .merges == 0 and (.oversize | not) and .commits > 0)'

@@ -100,6 +100,14 @@ The entrypoint runs `repo.verify` again itself after you exit, without any crede
 hypervisor runs it a third time after rebasing. A verification you skipped or faked only fails
 later.
 
+When `repo.host_verify` is set, the project also has a stage that needs a Docker daemon (an e2e
+stack, say), which this container lacks: the hypervisor runs `repo.host_verify.command` itself
+before merging. You cannot run it, so add or update the tests that stage runs as the criteria
+require and check them by reading — the code paths they hit, selectors, ports, fixtures. A
+failure comes back as resume notes quoting its log. Changing a file that matches a
+`repo.host_verify.guard` pattern (`*` matches `/` too) parks the item until a human approves it:
+do it only when the criteria need it.
+
 ### 5. Hand off
 
 Before finishing, check the inbox one last time and settle anything pending (see `## Mail`). Then

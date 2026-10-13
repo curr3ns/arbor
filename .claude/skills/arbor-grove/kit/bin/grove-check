@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# grove-check: the run's start checks, one line each — docker, the images, the credential file,
-# tracker access (gh auth for a github source) and the mirror. Prints "ok <what>" or
+# grove-check: the run's start checks, one line each — docker, the images, the operator's
+# acceptance of host_verify (when configured), the credential file, tracker access (gh auth for a
+# github source) and the mirror. Prints "ok <what>" or
 # "missing <what>: <fix>"; exits 1 when anything is missing. Never builds or changes anything
 # but the mirror.
 source "$(dirname "$0")/grove-lib.sh"
@@ -11,6 +12,10 @@ if docker info >/dev/null 2>&1; then ok docker; else miss docker "start the Dock
 for img in "$AGENT_IMAGE" "$EGRESS_IMAGE"; do
   if docker image inspect "$img" >/dev/null 2>&1; then ok "$img"; else miss "$img" "run grove-build"; fi
 done
+if [ -n "$(cfg .host_verify.command)" ]; then
+  if [ "$(cfg .host_verify.acknowledged false)" = true ]; then ok host_verify
+  else miss host_verify "the operator accepts host runs of the e2e stage in /arbor-grove init, or removes grove.host_verify"; fi
+fi
 if safe_file "$CREDENTIAL_FILE" 4096; then ok credential; else miss credential "the user runs $KIT/bin/grove-credential in their own terminal"; fi
 if [ "$(cfg .source github)" = github ]; then
   if gh auth status >/dev/null 2>&1; then ok gh; else miss gh "the user runs gh auth login"; fi

@@ -44,7 +44,9 @@ jq --arg id "$item" --argjson cfg "$(jq -c .grove "$CONFIG")" --argjson first "$
   | {
       mode: "work",
       item: {id: $id, title: $it.title, body: $it.body, url: $it.url},
-      repo: {default_branch: ($cfg.default_branch // "main"), verify: $cfg.verify},
+      repo: {default_branch: ($cfg.default_branch // "main"), verify: $cfg.verify,
+             host_verify: (if $cfg.host_verify.command then {command: $cfg.host_verify.command,
+                             guard: ($cfg.host_verify.guard // [])} else null end)},
       branch: "grove/\($id)",
       model: ($cfg.models.agent // "sonnet"),
       criteria: $it.criteria,

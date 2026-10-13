@@ -23,6 +23,14 @@ issue, swap the labels back, and move the item to `queued` (re-triage) for the r
 **T** below, else to `ready` (resume from its WIP when it has one). Closing the issue of a parked
 item moves it to `failed`.
 
+`host-verify-guard` is the exception: an answer whose first word is `approve` means a human read
+the guarded files' changes and accepts handing them to the host's Docker daemon. Run
+`$KIT/grove-host-verify approve <item>` (it records exactly the content approved), then set the
+item `reviewing` and run the review again from the intent gate (Exits, **Review** step 2) on
+`refs/grove/wip/<item>`. Any other answer is guidance: `ready`, as above, and the agent reworks
+the change to need no guarded edit, or a smaller one. A later change to an approved file parks
+again.
+
 ## Reasons
 
 | Reason                 | Raised when                                                                | Resolve by                                    |
@@ -40,6 +48,7 @@ item moves it to `failed`.
 | `unreviewable-change`  | binary, symlink, submodule or LFS changes, or a merge commit                | answering with how to avoid them              |
 | `diff-too-large`       | more than `limits.max_diff_lines` changed lines                             | splitting the issue                           |
 | `footprint-violation`  | files changed outside the footprint plus grants                            | answering (widen, or tell it to stay inside)  |
+| `host-verify-guard`    | the change touches a `host_verify.guard` file (what the host's Docker daemon runs) | reviewing those files' diff, then answering `approve`, or with guidance |
 | `footprint-denied`     | the agent needed paths the grove refused                                    | answering once the other item is done         |
 | `cr-timeout`           | a change request the agent depended on got no answer in time               | answering                                     |
 | `credential-in-diff`   | added lines look like a credential, or hold the grove's own                 | **rotate the credential first**, then review the WIP by hand |

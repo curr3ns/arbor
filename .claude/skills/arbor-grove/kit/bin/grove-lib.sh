@@ -44,6 +44,21 @@ grove_containers() {
   docker ps -a "${f[@]}" --format '{{.Names}}'
 }
 
+# e2e_project <item>: the compose project grove-host-verify runs the item's stack under.
+e2e_project() { printf 'arbor-grove-%s-%s-e2e' "$NAME" "$1"; }
+# prune_e2e <item>: removes what the item's host-verify stack left behind — its containers and the
+# images compose built for it — by the compose project label, so nothing outside that project is
+# touched. Pulled images (a database, say) carry no project label and stay.
+prune_e2e() {
+  local f=(--filter "label=com.docker.compose.project=$(e2e_project "$1")") ids
+  ids="$(docker ps -aq "${f[@]}" 2>/dev/null)" || return 0
+  # shellcheck disable=SC2086 # one id per word
+  [ -z "$ids" ] || docker rm -f $ids >/dev/null 2>&1 || true
+  ids="$(docker image ls -q "${f[@]}" 2>/dev/null | sort -u)" || return 0
+  # shellcheck disable=SC2086
+  [ -z "$ids" ] || docker image rm -f $ids >/dev/null 2>&1 || true
+}
+
 # safe_file <path> <max bytes>: a regular file (not a symlink) no larger than the cap.
 safe_file() {
   [ -f "$1" ] && [ ! -L "$1" ] || return 1
@@ -60,7 +75,33 @@ force_rm() {
   rm -rf "$1"
 }
 
+# host_guarded <base> <head> <approved json>: files changed between base and head (in the mirror)
+# that match a grove.host_verify.guard pattern — bash patterns, where `*` also matches `/` — and
+# whose content at head is not one approved ({path: [blob, ...]}; "deleted" for a removed file).
+# These are the files grove-host-verify would hand to the host's Docker daemon. One path per line.
+host_guarded() {
+  local base="$1" head="$2" approved="$3" patterns f p blob
+  patterns="$(jq -r '.grove.host_verify.guard[]? | strings' "$CONFIG" 2>/dev/null || true)"
+  [ -n "$patterns" ] || return 0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    while IFS= read -r p; do
+      # shellcheck disable=SC2053 # $p is a pattern on purpose
+      [[ "$f" == $p ]] || continue
+      blob="$(git -C "$MIRROR" rev-parse -q --verify "$head:$f" 2>/dev/null || echo deleted)"
+      jq -e --arg f "$f" --arg b "$blob" '.[$f] // [] | index($b) != null' <<<"$approved" >/dev/null \
+        || printf '%s\n' "$f"
+      break
+    done <<<"$patterns"
+  done < <(git -C "$MIRROR" diff --name-only --no-renames "$base" "$head")
+}
+
 STATE="$GD/state.json"
+# guard_approved <item>: the item's human-approved guarded files, {path: [blob, ...]} ({} when none).
+guard_approved() {
+  [ -f "$STATE" ] || { echo '{}'; return; }
+  jq -c --arg id "$1" '.items[$id].guard_approved // {}' "$STATE"
+}
 # state_update <jq filter> [jq args...]: rewrites state.json through the filter, atomically, and
 # only when the result is still a state object.
 state_update() {

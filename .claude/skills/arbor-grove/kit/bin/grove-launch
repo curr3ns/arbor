@@ -75,6 +75,11 @@ if [ "$mode" = work ]; then allow="api.anthropic.com${registries:+,$registries}"
 [[ "$allow" =~ ^[A-Za-z0-9.:,-]*$ ]] || die "grove.registries holds something other than host names"
 
 labels=(--label "arbor.grove=$NAME" --label "arbor.grove.item=$item")
+# Docker Desktop and OrbStack group containers by Compose project: each item shows as one group,
+# arbor-grove-<name>-<item>, holding its egress and agent (or regate) services. Grove itself finds
+# its containers only by the arbor.grove labels.
+group=(--label "com.docker.compose.project=arbor-grove-$NAME-$item" --label com.docker.compose.oneoff=False)
+service=agent; [ "$mode" = work ] || service=regate
 hardening=(--read-only --cap-drop ALL --security-opt no-new-privileges:true --user 1000:1000)
 ws="$(cname "$item" ws)"; sock="$(cname "$item" sock)"
 
@@ -86,12 +91,14 @@ docker volume create "${labels[@]}" "$ws" >/dev/null
 docker volume create "${labels[@]}" "$sock" >/dev/null
 
 docker run -d --name "$(cname "$item" egress)" "${labels[@]}" --label arbor.grove.role=egress \
+  "${group[@]}" --label com.docker.compose.service=egress \
   "${hardening[@]}" --network "$EGRESS_NET" --cpus 0.25 --memory 128m \
   -e "GROVE_ALLOW=$allow" -e GROVE_LISTEN=/run/grove-egress/proxy.sock \
   -v "$sock:/run/grove-egress" "$EGRESS_IMAGE" >/dev/null
 
 proxy=http://127.0.0.1:3128
 docker run -d --name "$(cname "$item" agent)" "${labels[@]}" --label "arbor.grove.role=$mode" \
+  "${group[@]}" --label "com.docker.compose.service=$service" \
   "${hardening[@]}" --network none \
   --cpus "$(cfg .resources.cpus 2)" --memory "$(cfg .resources.memory_mb 4096)m" --pids-limit 1024 \
   --tmpfs /tmp:rw,mode=1777 --tmpfs /home/node:rw,uid=1000,gid=1000,mode=0700 \

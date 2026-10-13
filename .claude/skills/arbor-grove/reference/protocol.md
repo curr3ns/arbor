@@ -36,6 +36,7 @@ Everything runtime lives under `<repo>/.arbor/grove/` (gitignored, mode 0700):
       heartbeat           unix seconds, rewritten every 30 s by the entrypoint
       transcript.jsonl    the claude stream-json transcript
       claude.stderr, crash.log
+      host-verify.log     tail of grove-host-verify's host run (written by the host, from repo code: untrusted)
     secret/claude         the Claude credential, copied in at launch and removed at teardown
 ```
 
@@ -51,7 +52,8 @@ Work run:
 {
   "mode": "work",
   "item": { "id": "gh-12", "title": "…", "body": "…", "url": "https://…" },
-  "repo": { "default_branch": "main", "verify": "npm test" },
+  "repo": { "default_branch": "main", "verify": "npm test",
+            "host_verify": { "command": "docker compose -f e2e/compose.yml up …", "guard": ["*compose*.y*ml"] } },
   "branch": "grove/gh-12",
   "model": "sonnet",
   "criteria": ["…", "…"],
@@ -61,6 +63,9 @@ Work run:
   "resume": { "ref": "refs/grove/wip/gh-12", "notes": "…" }
 }
 ```
+
+`repo.host_verify` is `null` unless the grove runs a Docker-needing stage on the host; the agent
+cannot run it, and learns of a failure through rework notes.
 
 `resume` is `null` on a first run. `resume.ref` is `null` when no work was kept; otherwise it is
 `refs/grove/wip/<item>` and is in `repo.bundle`. `notes` say why the earlier run stopped, and may

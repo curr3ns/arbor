@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # grove-teardown <item> [--keep-out]
-# Removes the item's containers and volumes (only ones labelled with this grove and this item) and
-# its copy of the credential. --keep-out keeps out/ so a crashed or killed run can still be read.
+# Removes the item's containers and volumes (only ones labelled with this grove and this item), what
+# an interrupted grove-host-verify left of its e2e stack (containers and built images), and its copy
+# of the credential. --keep-out keeps out/ so a crashed or killed run can still be read.
 source "$(dirname "$0")/grove-lib.sh"
 need docker
 item="${1:?usage: grove-teardown <item> [--keep-out]}"; valid_item "$item"
@@ -9,6 +10,7 @@ for c in $(grove_containers "$item"); do docker rm -f "$c" >/dev/null 2>&1 || tr
 for v in $(docker volume ls -q --filter "label=arbor.grove=$NAME" --filter "label=arbor.grove.item=$item"); do
   docker volume rm -f "$v" >/dev/null 2>&1 || true
 done
+prune_e2e "$item"
 dir="$(item_dir "$item")"
 rm -rf "$dir/secret" "$dir/in/repo.bundle"
 [ "${2:-}" = --keep-out ] || force_rm "$dir/out"
