@@ -52,7 +52,7 @@ carries `"jira": { "project": "<KEY>", "itemType": "Story" }` beside it
 through when it claims it, and an optional `doneTransition`, default `Done`,
 the one it closes an issue with).
 `arbor-auto-developer` reads this record to decide which issue tracker it
-works, and `arbor-auto-work` reads the project key for `jira:next`. Other top-level keys in the file belong to
+works, and `arbor-auto-work` reads the project key for `ticket:next`. Other top-level keys in the file belong to
 other tools — read and rewrite only `roadmap`.
 
 A `destination:<files|github|jira>` argument on invocation overrides the
@@ -223,8 +223,8 @@ When every item in a roadmap is checked, the file moves to
 flips the roadmap's last box does.
 
 On the `github` destination the issue number is the reference —
-`arbor-auto-work issue:<n>` — and a closed issue is the checked box. On
-`jira` the issue key is the reference — `arbor-auto-work jira:<KEY-n>` — and
+`arbor-auto-work ticket:<n>` — and a closed issue is the checked box. On
+`jira` the issue key is the reference — `arbor-auto-work ticket:<KEY-n>` — and
 an issue transitioned to Done is the checked box. The Epic is an Epic issue
 type, which the work queue never selects.
 

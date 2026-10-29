@@ -231,7 +231,7 @@ You MUST create a todo per step and complete them in order.
     unreachable or holds nothing eligible.
 
     On `github`, also copy the `templates/github/` directory that ships with
-    the `arbor-auto-work` skill into `.github/` (issue templates plus the
+    this skill into `.github/` (issue templates plus the
     pull request template; see that directory's `README.md`) and adjust its
     placeholders — the example packages in `feature.yml`, the gate command
     in the pull request template — to this project. The labels need the
@@ -272,8 +272,8 @@ You MUST create a todo per step and complete them in order.
     if the CLI is missing or unauthenticated, stop and tell the user rather
     than silently skipping. Apply the branch protection requested in step 6
     once both the remote and the CI/CD check from step 16 exist. If step 8
-    chose GitHub issues, create the label set from the `arbor-auto-work`
-    templates `README.md` once the remote exists — the `agent:*` lock and
+    chose GitHub issues, create the label set from this skill's
+    `templates/README.md` once the remote exists — the `agent:*` lock and
     status labels, `p0`/`p1`/`p2`, and `epic` — skipping any that already
     exist.
 

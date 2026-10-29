@@ -192,7 +192,7 @@ merged a1b2c3d`), not commentary.
 1. **Intake.** List open issues (GitHub: `$KIT/grove-gh intake`, which already drops issues in
    state or labelled `grove:skip`, `agent:working` (someone else's cycle holds it) or
    `agent:needs-clarification`, and applies `intake.label`; Jira: the source query in
-   `arbor-auto-work`'s Jira mode, without a lock label, skipping the same). Apply the trust rule
+   the local Jira mapping (`~/.claude/arbor/providers/tickets/jira.md`), without a lock label, skipping the same). Apply the trust rule
    (`$KIT/grove-gh trusted <login>`). Add the rest as
    `queued` with id `gh-<n>` (or the lowercased Jira key).
 2. **Parked items.** For each `parked` item, check for a trusted `@grove` answer after the park
@@ -213,7 +213,7 @@ merged a1b2c3d`), not commentary.
    the GitHub issue (`agent:working`, plus the criteria comment on its first launch only), writes
    `items/<item>/in/task.json` (`reference/protocol.md`) and `footprint.json` from state, runs
    `grove-launch <item> work`, and records `run`, `launched_at` and `running` in state. For Jira,
-   claim the issue first (the claim in `arbor-auto-work`'s Jira mode). Never hand-build this in
+   claim the issue first (the claim in the local Jira mapping (`~/.claude/arbor/providers/tickets/jira.md`)). Never hand-build this in
    an inline script.
 6. **Merge queue.** If nothing is `merging` in progress and `queue` is not empty, start the head
    (`## Merge queue`).
@@ -292,7 +292,7 @@ One item at a time, the head of `queue`; `merging` in state names it while in pr
    the open one; state `in-review`, `pr` = the URL it prints; leave the queue.
 6. **Done**: `$KIT/grove-gh comment <n>` (commit link, the criteria with the gate's evidence),
    `$KIT/grove-gh label <n> -agent:working +agent:done`, `$KIT/grove-gh close <n>` (a no-op when
-   `Closes #n` already closed it); Jira: the close in `arbor-auto-work`'s Jira mode. `grove-land forget <item>`, delete
+   `Closes #n` already closed it); Jira: the close in the local Jira mapping (`~/.claude/arbor/providers/tickets/jira.md`). `grove-land forget <item>`, delete
    `items/<item>/`, state `done`, leave the queue, and start the next head.
 
 Any item still running whose footprint overlaps the merged files gets a `notice`: "`<item>` merged

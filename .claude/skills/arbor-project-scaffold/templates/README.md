@@ -1,7 +1,7 @@
-# GitHub templates for issue mode
+# GitHub templates for arbor-auto-work tickets
 
-`arbor-auto-work` in issue mode (`issue:<n>` or `issue:next`) treats a GitHub
-issue as the cycle's contract: it claims the issue with a label, restates its
+`arbor-auto-work` with a GitHub issue as its ticket (`ticket:<n>` or
+`ticket:next`) treats the issue as the cycle's contract: it claims the issue with a label, restates its
 acceptance criteria as an intent contract, verifies the diff against those
 criteria at the intent gate, and closes the issue on merge. That only works if
 issues actually carry checkable criteria and the labels exist — which is what
@@ -14,7 +14,7 @@ Adopting is a one-off per repo; the work cycle itself needs no configuration.
 Copy the templates into the repo, keeping the layout:
 
 ```bash
-cp -R ~/.claude/skills/arbor-auto-work/templates/github/. .github/
+cp -R ~/.claude/skills/arbor-project-scaffold/templates/github/. .github/
 ```
 
 That gives you `.github/ISSUE_TEMPLATE/{feature,bug,config}.yml` and
@@ -38,14 +38,14 @@ gh label create "p2" -c "#fef2c0" -d "Lowest selection priority"
 gh label create "epic" -c "#3e4b9e" -d "Umbrella/tracking issue; never built directly"
 ```
 
-`issue:next` orders on `p0` > `p1` > `p2` > unlabelled, so priority labels are
+`ticket:next` orders on `p0` > `p1` > `p2` > unlabelled, so priority labels are
 optional — an unlabelled issue is still selectable, just last. `epic` marks an
 umbrella issue (the one `arbor-auto-roadmap` files per roadmap) that selection
 always skips.
 
-These templates are GitHub-only. A repo whose work lives in Jira needs no setup
-here: `arbor-auto-work`'s Jira mode uses hyphenated labels (`agent-working`, …)
-that Jira creates on first use.
+These templates are GitHub-only. A repo whose tickets live in another system
+needs no setup here: that system's label spellings, and whether they must be
+created first, come from its local mapping (`arbor-auto-work`'s `## Providers`).
 
 ## Why the criteria field is required
 
