@@ -196,14 +196,25 @@ python3 <skill>/report/build_report.py <work dir>/report.json
 
 It renders the ticket page to `~/.arbor-reports/<ID>/index.html` (plus a copy
 of `report.json`) from `report/templates/`, then updates the **all-tickets
-index** at `~/.arbor-reports/index.html` (one row per ticket, newest first). One
-background server (`report/server.py`, bound to `127.0.0.1`, always port 8766,
-reused if already running) serves the folder and runs the page's buttons.
-`--no-serve` only renders, `--no-open` skips opening the browser, and
-`ARBOR_REPORT_ROOT` overrides the root. **Every time a new version is served,
-the page is opened** at `reportUrl` (default `http://localhost:8766/<ID>/`) and
-shown to the user before anything else happens; if you rendered with
-`--no-open` or `--no-serve`, open it yourself.
+index** at `~/.arbor-reports/index.html` (one row per ticket, newest first,
+sortable by any column). One background server (`report/server.py`, bound to
+`127.0.0.1`, always port 8766, reused if already running) serves the folder and
+runs the page's buttons. `--no-serve` only renders, `--no-open` skips opening
+the browser, and `ARBOR_REPORT_ROOT` overrides the root. **Every time a new
+version is served, the user sees it** before anything else happens: an open
+page polls the server and reloads itself when the report is regenerated (so
+re-running `build_report.py` inline is enough), and when no tab has the page
+open it is opened at `reportUrl`, else at the URL it was last viewed at (e.g.
+through a reverse proxy), else `http://localhost:8766/<ID>/`. The output's
+`open:` line says when an existing tab was reused. If you rendered with
+`--no-open` or `--no-serve`, open it yourself. Page buttons (Rerun, Commit &
+push, …) never open a tab; the page that started them reloads when they finish.
+
+The server answers only loopback hosts and the hosts listed under `hosts` in
+`~/.arbor-reports/server.json`; a `reportUrl` host is added there automatically,
+so a local reverse proxy can serve the reports under a path prefix (e.g.
+`https://reports.example.local/report/{ticket}/`, with the proxy stripping
+`/report` and rewriting redirects back under it).
 
 Never commit `report.json` (it lives in the work dir, outside the repos).
 

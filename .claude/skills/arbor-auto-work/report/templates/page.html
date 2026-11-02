@@ -322,12 +322,12 @@ $artifacts
 <div class="toast" id="toast" role="status"></div>
 
 <script>
-var TICKET="$ticket_id",TOKEN="$token",timer=null;
+var TICKET="$ticket_id",TOKEN="$token",GEN="$generated_at",timer=null;
 var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 function hdr(){return {"X-Report-Token":TOKEN}}
 function toast(m){var t=document.getElementById("toast");t.textContent=m;t.classList.add("on");setTimeout(function(){t.classList.remove("on")},1400)}
 function show(name,j){var st=document.getElementById("jobstatus");st.className="pill "+(j.status==="failed"?"bad":j.status==="done"?"ok":"warn");document.getElementById("jobcard").style.display="block";document.getElementById("jobname").textContent=name;document.getElementById("jobstatus").textContent=j.status;var l=document.getElementById("joblog");l.textContent=j.log||"";l.scrollTop=l.scrollHeight}
-function poll(name){clearInterval(timer);timer=setInterval(function(){fetch("../api/"+TICKET+"/jobs/"+name,{headers:hdr()}).then(function(r){return r.json()}).then(function(j){show(name,j);if(j.status!=="running"){clearInterval(timer);$$(".zbtn").forEach(function(x){x.disabled=false});if(j.status==="done"&&(name==="commit-push"||name==="rerun"||name.indexOf("tm-")===0)){try{sessionStorage.setItem("rpt-open-hist","1")}catch(e){}toast("Done. Refreshing…");setTimeout(function(){location.reload()},1500)}}})},1500)}
+function poll(name){clearInterval(timer);timer=setInterval(function(){fetch("../api/"+TICKET+"/jobs/"+name,{headers:hdr()}).then(function(r){return r.json()}).then(function(j){show(name,j);if(j.status!=="running"){clearInterval(timer);timer=null;$$(".zbtn").forEach(function(x){x.disabled=false});if(j.status==="done"&&(name==="commit-push"||name==="rerun"||name.indexOf("tm-")===0)){try{sessionStorage.setItem("rpt-open-hist","1")}catch(e){}toast("Done. Refreshing…");setTimeout(function(){location.reload()},1500)}}})},1500)}
 function act(name,payload){
  if(name==="commit-push"&&!confirm("Commit and push the workspace branch for every repo in this report?"))return;
  var h=hdr(),o={method:"POST",headers:h};if(payload){h["Content-Type"]="application/json";o.body=JSON.stringify(payload)}
@@ -338,7 +338,12 @@ document.getElementById("jobcopy").onclick=function(){var t=document.getElementB
 function checkStale(){fetch("../api/"+TICKET+"/status",{headers:hdr()}).then(function(r){return r.json()}).then(function(j){var b=document.getElementById("stale");if(!j||!j.changed||!j.changed.length){b.hidden=true;return}
  var n=j.changed.length,list=j.changed.slice(0,6).map(function(c){return c.file.replace(/^[^/]+\//,"")+" ("+c.kind+")"}).join(", ")+(n>6?" … +"+(n-6)+" more":"");
  document.getElementById("staletxt").innerHTML="<b>"+n+" file"+(n>1?"s":"")+" changed since this report was generated.</b> Tests, explanations and manual tests may be out of date.<span class=fl></span>";document.getElementById("staletxt").querySelector(".fl").textContent=list;b.hidden=false}).catch(function(){})}
-checkStale();document.addEventListener("visibilitychange",function(){if(!document.hidden)checkStale()});
+/* regenerated elsewhere (an agent ran build_report.py): reload. Skipped while this tab runs a job; it reloads when the job ends.
+   The poll also tells the server this page is open (and at which URL), so build_report.py doesn't open another tab. */
+function checkVersion(){fetch("../api/"+TICKET+"/version?u="+encodeURIComponent(location.origin+location.pathname),{headers:hdr()}).then(function(r){return r.json()}).then(function(j){
+ if(timer||!j||!j.generatedAt||!GEN||j.generatedAt===GEN)return;try{if(sessionStorage.getItem("rpt-reloaded")===j.generatedAt)return;sessionStorage.setItem("rpt-reloaded",j.generatedAt)}catch(e){}
+ toast("Report updated. Refreshing…");setTimeout(function(){location.reload()},800)}).catch(function(){})}
+checkStale();checkVersion();setInterval(checkVersion,4000);document.addEventListener("visibilitychange",function(){if(!document.hidden){checkStale();checkVersion()}});
 /* run history */
 var NAMES={"rerun":"Rerun report","commit-push":"Commit &amp; push","tm-automation":"Publish tests","tm-manual":"Manual test cases"};
 function ago(t){return t?new Date(t*1000).toLocaleString():""}

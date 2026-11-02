@@ -9,9 +9,16 @@ Actions (POST /api/<TICKET>/<action>, poll GET /api/<TICKET>/jobs/<action>), all
   tm-manual          draft manual test cases there from the report's manual tests (same condition)
   rerun              regenerate the report after outside changes: re-run tests, refresh explanations, manual tests and summary (headless claude)
 Also GET /api/<TICKET>/status: files changed in the workspace since the report was generated.
+GET /api/<TICKET>/version?u=<page url>: the report's generatedAt (an open page polls it and reloads when it changes);
+records that the page is open at that URL. GET /api/<TICKET>/viewer: {age, url} of the last such poll, so build_report.py
+opens no second tab, and <root>/<TICKET>/viewer.json keeps the URL for opening it next time.
+Page actions never open a browser tab: the page that started the action reloads itself when it ends.
+Requests must carry a loopback Host or one listed under "hosts" in <root>/server.json (a local reverse proxy;
+build_report.py adds the reportUrl host there).
 Set ARBOR_REPORT_DRY_RUN=1 to log the test-management and rerun commands instead of running them.
 """
 import json, os, re, subprocess, sys, threading, time
+from urllib.parse import parse_qs, urlsplit
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -27,6 +34,7 @@ PROTECTED = re.compile(r"^(development|main|master|release-.*)$")
 SECRET = re.compile(r"(^|/)(\.env[^/]*|[^/]*\.(pem|key|p12|pfx)|id_rsa[^/]*|report\.json)$")
 AI_LINE = re.compile(r"co-authored-by|generated with|claude|anthropic", re.I)
 jobs, lock = {}, threading.Lock()
+viewers = {}  # ticket -> (last poll time, page URL)
 
 
 hist = {}  # ticket -> list of run entries (newest last); the live job objects are the same dicts
@@ -78,8 +86,12 @@ def run_label(action, payload):
     return f + (": " + payload["title"] if payload.get("title") else " (all unpublished)")
 
 
+def state():
+    return json.loads((ROOT / "server.json").read_text())
+
+
 def token():
-    return json.loads((ROOT / "server.json").read_text()).get("token")
+    return state().get("token")
 
 
 def load(ticket):
@@ -93,8 +105,7 @@ def save(ticket, d):
     ws = Path(os.path.expanduser(d["workspace"])) / "report.json"
     if ws.parent.exists():
         ws.write_text(json.dumps(d, indent=2))
-    build_report.render_ticket(d, ROOT)
-    subprocess.run(["open", build_report.report_url(d, PORT)])  # show every re-rendered version
+    build_report.render_ticket(d, ROOT)  # open pages notice the new generatedAt and reload
 
 
 def vrun(path, log, op, **args):
@@ -376,12 +387,32 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def host_ok(self):
-        return self.headers.get("Host", "") in (f"localhost:{PORT}", f"127.0.0.1:{PORT}")
+        """DNS-rebinding guard: loopback, or a proxy hostname listed under "hosts" in server.json."""
+        return self.headers.get("Host", "") in (f"localhost:{PORT}", f"127.0.0.1:{PORT}", *state().get("hosts", []))
 
     def authed(self):
         return self.host_ok() and self.headers.get("X-Report-Token") == token()
 
+    def seen(self, ticket, url):
+        """Record that the ticket page is open at url; keep the URL on disk when it changes."""
+        prev = viewers.get(ticket, (0, None))[1]
+        if not re.fullmatch(r"https?://[^\s]{1,500}", url or ""):
+            url = prev or f"http://localhost:{PORT}/{ticket}/"
+        viewers[ticket] = (time.time(), url)
+        if url != prev:
+            (ROOT / ticket / "viewer.json").write_text(json.dumps({"url": url}))
+
     def do_GET(self):
+        sp = urlsplit(self.path)
+        mv = re.fullmatch(r"/api/([A-Za-z0-9-]+)/(version|viewer)", sp.path)
+        if mv and (ROOT / mv[1] / "report.json").exists():
+            if not self.authed():
+                return self.reply(403, {"error": "forbidden"})
+            if mv[2] == "viewer":
+                t, url = viewers.get(mv[1], (None, None))
+                return self.reply(200, {"age": time.time() - t if t else None, "url": url})
+            self.seen(mv[1], (parse_qs(sp.query).get("u") or [""])[0])
+            return self.reply(200, {"generatedAt": json.loads((ROOT / mv[1] / "report.json").read_text()).get("generatedAt", "")})
         ms = re.fullmatch(r"/api/([A-Za-z0-9-]+)/status", self.path)
         if ms and (ROOT / ms[1] / "report.json").exists():
             if not self.authed():

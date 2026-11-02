@@ -7,7 +7,7 @@ publishing when the report names a test-management mapping). Never pushes by its
 Output: ~/.arbor-reports/<TICKET>/index.html plus an all-tickets index.html (override root with ARBOR_REPORT_ROOT)
 Data schema: see ../references/report.md. Diffs are computed here through the report's VCS mapping (vcs.py), not supplied.
 """
-import hashlib, shutil, time, html, json, re, os, secrets, signal, subprocess, sys, socket, datetime
+import hashlib, shutil, time, html, json, re, os, secrets, signal, subprocess, sys, socket, datetime, urllib.parse, urllib.request
 from pathlib import Path
 from string import Template
 
@@ -15,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import vcs
 
 T = Path(__file__).parent / "templates"
-SERVER_VERSION = 12
+SERVER_VERSION = 14
+VIEWER_TTL = 75  # seconds; an open page polls every 4s, but browsers throttle hidden tabs to about once a minute
 tpl = lambda n: Template((T / n).read_text())
 esc = lambda s: html.escape(str(s if s is not None else ""))
 
@@ -26,9 +27,24 @@ def base_branch(r):
         raise SystemExit(f"{r['name']}: no baseBranch and the VCS mapping could not find the default branch")
     return base
 
-def report_url(d, port):
-    """Where the ticket page is opened: the report's reportUrl template ({ticket}, {port}), else the local server."""
+def report_url(d, port, root=None):
+    """Where the ticket page is opened: the report's reportUrl template ({ticket}, {port}), else the URL the page was
+    last viewed at (e.g. through a reverse proxy; the server records it in <root>/<TICKET>/viewer.json), else the local server."""
+    if not d.get("reportUrl") and root:
+        try:
+            return json.loads((root / d["ticket"] / "viewer.json").read_text())["url"]
+        except (OSError, ValueError, KeyError):
+            pass
     return (d.get("reportUrl") or "http://localhost:{port}/{ticket}/").format(ticket=d["ticket"], port=port)
+
+def open_page(root, port, ticket):
+    """URL of a browser tab showing this ticket's page right now (it polls the server and reloads itself), else None."""
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/{ticket}/viewer", headers={"X-Report-Token": ensure_token(root)})
+        v = json.loads(urllib.request.urlopen(req, timeout=2).read())
+    except (OSError, ValueError):
+        return None
+    return v.get("url") if v.get("age") is not None and v["age"] < VIEWER_TTL else None
 
 def _intra(old, new):
     """Wrap the differing middle of a changed line pair in <mark>; returns escaped (old, new)."""
@@ -837,7 +853,7 @@ def build(d, token="", evidence=None):
         analysis=txt(d.get("analysis")), criteria=criteria,
         spec=md_block(spec), agents=agents_section(d.get("agents", [])), artifacts=artifacts_section(d),
         commit_message=txt(msg, "No commit message prepared"), commit_raw=esc(msg or ""),
-        token=esc(token), ticket_id=esc(ticket),
+        token=esc(token), ticket_id=esc(ticket), generated_at=esc(d.get("generatedAt", "")),
         push_state="Pushed" if pushed and not pend else ("Staged commits" if pend else "Not pushed"), push_cls="ok" if pushed and not pend else "warn", push_disabled="disabled" if pushed and not pend else "", staged=staged,
         n_files=fc, n_add=ad, n_rm=rm, n_ok=n_ok, n_fail=n_fail, n_skip=n_skip, n_tests=len(tl),
         n_hiccups=len(hl), n_why=len(d.get("explanations", [])), evidence=evidence_section(evidence or []), n_evidence=len(evidence or []), manual=manual_html, manual_data=manual_text, n_manual=len((d.get("manualTests") or {}).get("tests", [])), n_follow=len(fups), n_agents=len(d.get("agents", [])),
@@ -868,11 +884,12 @@ def update_index(root, d, generated):
     rows = "".join(tpl("index_row.html").substitute(
         ticket=esc(e["ticket"]), title=esc(e["title"]), generated=esc(e["generated"]),
         repos="".join(f'<span class="pill">{esc(r)}</span>' for r in e["repos"]),
-        pushed="Pushed" if e["pushed"] else "Not pushed", pushcls="ok" if e["pushed"] else "warn",
+        pushed="Pushed" if e["pushed"] else "Not pushed", pushcls="ok" if e["pushed"] else "warn", pushv=int(e["pushed"]),
+        testv=e["passed"] - 1000 * e["failed"],
         tests=(f'<span class="badge pass">{e["passed"]} passed</span>' + (f'<span class="badge fail">{e["failed"]} failed</span>' if e["failed"] else "")),
         hiccups=e["hiccups"], summary=esc(e["summary"][:200].rsplit(" ", 1)[0] + "…" if len(e["summary"]) > 200 else e["summary"]))
         for e in sorted(reg.values(), key=lambda e: e["generated"], reverse=True))
-    (root / "index.html").write_text(tpl("index.html").substitute(rows=rows, count=len(reg)))
+    (root / "index.html").write_text(tpl("index.html").substitute(rows=rows))
 
 def ensure_token(root):
     state = root / "server.json"
@@ -881,6 +898,15 @@ def ensure_token(root):
         st["token"] = secrets.token_hex(16)
         state.write_text(json.dumps(st))
     return st["token"]
+
+def allow_host(root, url):
+    """Let the server answer requests proxied from reportUrl's host (it refuses unknown Host headers)."""
+    host = urllib.parse.urlsplit(url).netloc if url else ""
+    state = root / "server.json"
+    st = json.loads(state.read_text()) if state.exists() else {}
+    if host and host not in st.get("hosts", []):
+        st["hosts"] = st.get("hosts", []) + [host]
+        state.write_text(json.dumps(st))
 
 def render_ticket(data, root):
     """Write the ticket page + report.json copy and refresh the all-tickets index."""
@@ -893,6 +919,7 @@ def render_ticket(data, root):
     (out / "index.html").write_text(build(data, ensure_token(root), copy_evidence(data, out)))
     (out / "report.json").write_text(json.dumps(data, indent=1))
     update_index(root, data, generated)
+    allow_host(root, data.get("reportUrl"))
 
 def listener_pid(port):
     r = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, text=True)
@@ -937,5 +964,8 @@ if __name__ == "__main__":
     print(f"index:  http://localhost:{port}/\nticket: http://localhost:{port}/{data['ticket']}/")
     if data.get("reportUrl"):
         print(f"proxy:  {report_url(data, port)}")
-    if "--no-open" not in args:
-        subprocess.run(["open", report_url(data, port)])
+    live = open_page(root, port, data["ticket"])
+    if live:
+        print(f"open:   already open at {live}; that tab reloads itself with this version")
+    elif "--no-open" not in args:
+        subprocess.run(["open", report_url(data, port, root)])

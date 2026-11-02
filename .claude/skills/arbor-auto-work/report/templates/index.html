@@ -34,6 +34,8 @@ td .t{font-weight:600}td .s{color:var(--muted);margin-top:2px;font-size:13px;max
 .pill{display:inline-flex;padding:1px 9px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--sunk);color:var(--muted);margin:0 4px 4px 0;white-space:nowrap}
 .pill.ok,.badge.pass{color:var(--ok);background:var(--okbg);border-color:transparent}.pill.warn,.badge.skip{color:var(--warn);background:var(--warnbg);border-color:transparent}.badge.fail{color:var(--bad);background:var(--badbg)}
 .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:650;margin-right:4px;white-space:nowrap}
+th .sort{all:unset;cursor:pointer;display:inline-flex;gap:6px;align-items:center}th .sort:hover{color:var(--fg)}th .sort::after{content:"\2195";opacity:.35;font-size:11px}
+th[aria-sort] .sort{color:var(--fg)}th[aria-sort=ascending] .sort::after{content:"\2191";opacity:1}th[aria-sort=descending] .sort::after{content:"\2193";opacity:1}
 .empty{color:var(--muted);font-style:italic;padding:24px;text-align:center}
 @media(max-width:900px){.wrap{padding:0 14px}th:nth-child(n+3),td:nth-child(n+3){display:none}.filter{width:150px}}
 </style>
@@ -41,12 +43,12 @@ td .t{font-weight:600}td .s{color:var(--muted);margin-top:2px;font-size:13px;max
 </head>
 <body>
 <header class="top"><div class="wrap"><div class="hrow">
-<div><h1>Implementation reports</h1><div class="sub">$count ticket(s), newest first</div></div>
+<h1>Implementation reports</h1>
 <div class="tools"><input class="filter" id="q" type="search" placeholder="Filter tickets…  ( / )" aria-label="Filter tickets"><button class="btn icon" id="theme" title="Toggle light / dark" aria-label="Toggle theme">&#9680;</button></div>
 </div></div></header>
 <main class="wrap">
 <div class="card"><table>
-<thead><tr><th>Ticket</th><th>Summary</th><th>Repos</th><th>Push</th><th>Tests</th><th>Hiccups</th><th>Generated</th></tr></thead>
+<thead><tr><th data-k="ticket"><button class="sort">Ticket</button></th><th data-k="text"><button class="sort">Summary</button></th><th data-k="text"><button class="sort">Repos</button></th><th data-k="num"><button class="sort">Push</button></th><th data-k="num"><button class="sort">Tests</button></th><th data-k="num"><button class="sort">Hiccups</button></th><th data-k="text" aria-sort="descending"><button class="sort">Generated</button></th></tr></thead>
 <tbody id="rows">
 $rows
 </tbody></table></div>
@@ -55,6 +57,13 @@ $rows
 document.getElementById("theme").onclick=function(){var d=document.documentElement,n=d.dataset.theme==="dark"?"light":"dark";d.dataset.theme=n;try{localStorage.setItem("rpt-theme",n)}catch(e){}};
 var q=document.getElementById("q");
 q.oninput=function(){var v=q.value.trim().toLowerCase();Array.prototype.forEach.call(document.querySelectorAll("#rows tr"),function(r){r.classList.toggle("hide",v&&r.textContent.toLowerCase().indexOf(v)<0)})};
+var ths=document.querySelectorAll("thead th"),tb=document.getElementById("rows");
+function val(r,i,k){var c=r.cells[i],v=c.dataset.v!=null?c.dataset.v:c.textContent.trim();return k==="num"?+v:v}
+function sortBy(i,dir){var k=ths[i].dataset.k,rows=Array.prototype.slice.call(tb.rows);
+rows.sort(function(a,b){var x=val(a,i,k),y=val(b,i,k),c=k==="num"?x-y:String(x).localeCompare(y,undefined,{numeric:k==="ticket",sensitivity:"base"});return dir==="ascending"?c:-c});
+rows.forEach(function(r){tb.appendChild(r)});Array.prototype.forEach.call(ths,function(t,j){if(j===i)t.setAttribute("aria-sort",dir);else t.removeAttribute("aria-sort")})}
+Array.prototype.forEach.call(ths,function(th,i){th.querySelector(".sort").onclick=function(){var d=th.getAttribute("aria-sort")==="ascending"?"descending":"ascending";sortBy(i,d);try{localStorage.setItem("rpt-sort",i+":"+d)}catch(e){}}});
+try{var ss=(localStorage.getItem("rpt-sort")||"").split(":");if(ths[ss[0]]&&/^(a|de)scending$$/.test(ss[1]))sortBy(+ss[0],ss[1])}catch(e){}
 addEventListener("keydown",function(e){if(e.key==="/"&&e.target.tagName!=="INPUT"){e.preventDefault();q.focus()}else if(e.key==="Escape")q.blur()});
 </script>
 </body></html>
