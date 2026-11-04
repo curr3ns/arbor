@@ -10,3 +10,4 @@ employer-specific names, hosts or accounts.
   and commit subjects carry no ID.
 - **Gate:** none beyond reading the changed skill end to end; after adding or removing a skill,
   run `./install.sh` and check `~/.claude/skills`.
+- **Merge:** commit straight to `main` and push. No worktree, branch or PR.
