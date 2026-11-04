@@ -28,26 +28,28 @@ If both return empty, report "Nothing to commit (kiro-only changes or clean work
 
 Format:
 ```
-{TICKET } One concise summary sentence
+{TICKET } One concise imperative summary
 
 - Bullet per logical change, as short as possible
 - Another bullet
 ```
 
 Rules:
-- Summary line: past tense, ≤72 characters, no period; prefix with `TICKET ` (no colon) if set
-- **Blank line between the summary and the bullets, always.** Without it, `git commit -F` treats the message as one unbroken paragraph and folds every bullet into the subject line instead of the commit body.
-- Each bullet: past tense, one short phrase, no filler words, no periods
+- Summary line: imperative mood ("Add", not "Added"), ≤72 characters, no period; prefix with `TICKET ` (no colon) if set
+- The body scales with the change: a trivial change gets the subject only, with no bullets
+- **Otherwise, a blank line between the summary and the bullets, always.** Without it, `git commit -F` treats the message as one unbroken paragraph and folds every bullet into the subject line instead of the commit body.
+- Each bullet: imperative mood, one short phrase, no filler words, no periods. When the reason for a change isn't obvious from the diff, give the reason its own bullet
 - Omit .kiro and test-related changes from bullets **unless the diff contains only test changes** — in that case include them
-- No prose body, no "this commit", no redundant bullets
+- Never prose paragraphs, no "this commit", no redundant bullets
+- No AI attribution: no `Co-Authored-By` trailer, no "Generated with" line
 
 Example:
 ```
-ABC-123 Added new connectors for the database
+ABC-123 Add new connectors for the database
 
-- Configured the database to scaffold automatically
-- Defined connectors
-- Added health monitors
+- Configure the database to scaffold automatically
+- Define connectors
+- Add health monitors
 ```
 
 ### 4. Write and open
